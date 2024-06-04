@@ -108,6 +108,15 @@ def update_activated_renderer_state(gaus: util_gau.GaussianData):
     g_renderer.update_camera_intrin(g_camera)
     g_renderer.set_render_reso(g_camera.w, g_camera.h)
 
+def update_activated_renderer_state_avatar(gaus: util_gau.GaussianAvatarData, optimized=False):
+    g_renderer.update_gaussian_avatar_w_precolor(gaus, optimized)
+    g_renderer.sort_and_update(g_camera)
+    g_renderer.set_scale_modifier(g_scale_modifier)
+    g_renderer.set_render_mod(g_render_mode - 3)
+    g_renderer.update_camera_pose(g_camera)
+    g_renderer.update_camera_intrin(g_camera)
+    g_renderer.set_render_reso(g_camera.w, g_camera.h)
+
 def window_resize_callback(window, width, height):
     gl.glViewport(0, 0, width, height)
     g_camera.update_resolution(height, width)
@@ -140,7 +149,20 @@ def main():
 
     # gaussian data
     gaussians = util_gau.naive_gaussian()
-    update_activated_renderer_state(gaussians)
+
+    crowd_list = [
+        {
+            'id': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411.npz',
+            'copy': [ 
+                # {'num_person': 6, 'motion': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411_pos_list_cmu05_14.npy'}, 
+                {'num_person': 100, 'motion': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411_pos_list_op8_poses.npy'}, 
+                # {'num_person': 100, 'motion': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411_pos_list_Walking_3_poses.npy'}, 
+            ]
+        },
+    ]
+    optimized = False
+    gau_avatar = util_gau.load_identity(crowd_list[0])
+    update_activated_renderer_state_avatar(gau_avatar, optimized)
     
     # settings
     while not glfw.window_should_close(window):
@@ -154,7 +176,10 @@ def main():
         update_camera_pose_lazy()
         update_camera_intrin_lazy()
         
-        g_renderer.draw()
+        # g_renderer.draw()
+        # g_renderer.update_pos()
+        g_renderer.update_pos_raw(optimized)
+        g_renderer.draw_w_precolor(optimized)
 
         # imgui ui
         if imgui.begin_main_menu_bar():
@@ -185,7 +210,8 @@ def main():
                         "reduce updates", g_renderer.reduce_updates,
                     )
 
-                imgui.text(f"# of Gaus = {len(gaussians)}")
+                total_num_gaus = gau_avatar.total_num_person * gau_avatar.num_points_per_subject
+                imgui.text(f"# of Gaus = {total_num_gaus}")
                 if imgui.button(label='open ply'):
                     file_path = filedialog.askopenfilename(title="open ply",
                         initialdir="C:\\Users\\MSI_NB\\Downloads\\viewers",

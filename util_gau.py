@@ -1,6 +1,7 @@
 import numpy as np
 from plyfile import PlyData
 from dataclasses import dataclass
+import random
 
 @dataclass
 class GaussianData:
@@ -8,7 +9,8 @@ class GaussianData:
     rot: np.ndarray
     scale: np.ndarray
     opacity: np.ndarray
-    sh: np.ndarray
+    sh: np.ndarray = None
+    colors_precomp: np.ndarray = None
     def flat(self) -> np.ndarray:
         ret = np.concatenate([self.xyz, self.rot, self.scale, self.opacity, self.sh], axis=-1)
         return np.ascontiguousarray(ret)
@@ -19,6 +21,24 @@ class GaussianData:
     @property 
     def sh_dim(self):
         return self.sh.shape[-1]
+
+@dataclass
+class GaussianAvatarData:
+    total_num_person: int
+    num_points_per_subject: int
+    copies: list
+    xyz: np.ndarray
+    rot: np.ndarray
+    scale: np.ndarray
+    opacity: np.ndarray
+    sh: np.ndarray = None
+    colors_precomp: np.ndarray = None
+    def flat(self) -> np.ndarray:
+        ret = np.concatenate([self.xyz, self.rot, self.scale, self.opacity, self.sh], axis=-1)
+        return np.ascontiguousarray(ret)
+    
+    def __len__(self):
+        return len(self.xyz)
 
 
 def naive_gaussian():
@@ -106,6 +126,66 @@ def load_ply(path):
                         features_extra.reshape(len(features_dc), -1)], axis=-1).astype(np.float32)
     shs = shs.astype(np.float32)
     return GaussianData(xyz, rots, scales, opacities, shs)
+
+
+def load_npz(file_path):
+    data = np.load(file_path)
+    xyz = data['means3D']
+    # xyz = rotate_point_cloud(xyz)
+    xyz[:, 0:2] = -xyz[:, 0:2]
+    rot = data['rotations']
+    scale = data['scales']
+    opacity = data['opacities']
+    colors_precomp = data['colors_precomp']
+    return GaussianData(xyz=xyz, rot=rot, scale=scale, opacity=opacity, colors_precomp=colors_precomp)
+
+def load_motion(file_path):
+    xyz_list = np.load(file_path)
+    xyz_list[:, :, 0:2] = -xyz_list[:, :, 0:2]
+    # for i in range(xyz_list.shape[0]):
+    #     xyz_list[i] = rotate_point_cloud(xyz_list[i])
+    return xyz_list
+
+def load_identity(identity_dict):
+    file_path = identity_dict['id']
+    data = load_npz(file_path)
+
+    copies = []
+    total_num_person = 0
+    radius_range = 10
+    num_points_per_subject = data.rot.shape[0]
+    for copy in identity_dict['copy']:
+        motion_file_path = copy['motion']
+        motion_data = load_motion(motion_file_path)
+        num_person = copy['num_person']
+        transl_list = []
+        # motion_list = np.empty((num_person, motion_data.shape[0], num_points_per_subject, 3), dtype=np.float32)
+        motion_list = []
+        row = 10
+        col = 10
+        unit_dist = 1.3
+        assert row * col == num_person
+        # grid_pos = np.arange(0, row * col).reshape(row, col)
+        for i in range(row):
+            for j in range(col):
+                # motion_list.append(random_rotate(motion_data) + np.array([j - col/2, 0, i]))
+                # motion_list[i * col + j] = random_rotate(motion_data) + grid_pos[i, j]
+                transl_list.append(np.array([(j - col/2)*unit_dist, 0, -i*unit_dist]))
+                motion_list.append(motion_data)
+        copies.append({
+            'num_person': num_person,
+            'motion_list': motion_list,
+            'transl_list': transl_list,
+        })
+        total_num_person += num_person
+
+    return GaussianAvatarData(
+        xyz=data.xyz, rot=data.rot, scale=data.scale, 
+        opacity=data.opacity, colors_precomp=data.colors_precomp,
+        copies=copies,
+        total_num_person=total_num_person,
+        num_points_per_subject=num_points_per_subject,
+    )
 
 if __name__ == "__main__":
     gs = load_ply("C:\\Users\\MSI_NB\\Downloads\\viewers\\models\\train\\point_cloud\\iteration_7000\\point_cloud.ply")

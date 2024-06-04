@@ -11,8 +11,8 @@ class Camera:
         self.h = h
         self.w = w
         self.fovy = np.pi / 2
-        self.position = np.array([0.0, 0.0, 3.0]).astype(np.float32)
-        self.target = np.array([0.0, 0.0, 0.0]).astype(np.float32)
+        self.position = np.array([1.0, -3.5, 5.0]).astype(np.float32)
+        self.target = np.array([0.0, -1.0, 0.0]).astype(np.float32)
         self.up = np.array([0.0, -1.0, 0.0]).astype(np.float32)
         self.yaw = -np.pi / 2
         self.pitch = 0

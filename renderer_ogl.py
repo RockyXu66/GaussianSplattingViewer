@@ -95,6 +95,9 @@ class GaussianRenderBase:
 
     def update_gaussian_data(self, gaus: util_gau.GaussianData):
         raise NotImplementedError()
+
+    def update_gaussian_avatar_w_precolor(self, gaus: util_gau.GaussianAvatarData):
+        raise NotImplementedError()
     
     def sort_and_update(self):
         raise NotImplementedError()
@@ -112,6 +115,9 @@ class GaussianRenderBase:
         raise NotImplementedError()
     
     def draw(self):
+        raise NotImplementedError()
+
+    def draw_w_precolor(self):
         raise NotImplementedError()
     
     def set_render_reso(self, w, h):

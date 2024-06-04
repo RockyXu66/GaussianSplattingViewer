@@ -63,7 +63,8 @@ class GaussianDataCUDA:
     rot: torch.Tensor
     scale: torch.Tensor
     opacity: torch.Tensor
-    sh: torch.Tensor
+    sh: torch.Tensor = None
+    precolor: torch.Tensor = None
     
     def __len__(self):
         return len(self.xyz)
@@ -71,6 +72,18 @@ class GaussianDataCUDA:
     @property 
     def sh_dim(self):
         return self.sh.shape[-2]
+
+@dataclass
+class GaussianAvatarCUDA:
+    total_num_person: int
+    num_points_per_subject: int
+    xyz: torch.Tensor
+    rot: torch.Tensor
+    scale: torch.Tensor
+    opacity: torch.Tensor
+    precolor: torch.Tensor
+    xyz_all: torch.Tensor = None
+    sh: torch.Tensor = None
     
 
 @dataclass
@@ -99,7 +112,40 @@ def gaus_cuda_from_cpu(gau: util_gau) -> GaussianDataCUDA:
     )
     gaus.sh = gaus.sh.reshape(len(gaus), -1, 3).contiguous()
     return gaus
-    
+
+def avatar_cuda_from_cpu_raw(gau: util_gau.GaussianAvatarData) -> GaussianAvatarCUDA:
+    gau_gpu = GaussianAvatarCUDA(
+        total_num_person = gau.total_num_person,
+        num_points_per_subject = gau.num_points_per_subject,
+        xyz = torch.tensor(gau.xyz).float().cuda().requires_grad_(False),
+        rot = torch.tensor(gau.rot).float().cuda().requires_grad_(False),
+        scale = torch.tensor(gau.scale).float().cuda().requires_grad_(False),
+        opacity = torch.tensor(gau.opacity).float().cuda().requires_grad_(False),
+        precolor = torch.tensor(gau.colors_precomp).float().cuda().requires_grad_(False),
+    )
+
+    ''' For original cuda program '''
+    n_p = gau.total_num_person
+    gau_gpu.xyz = gau_gpu.xyz.repeat(n_p, 1)
+    gau_gpu.rot = gau_gpu.rot.repeat(n_p, 1)
+    gau_gpu.scale = gau_gpu.scale.repeat(n_p, 1)
+    gau_gpu.opacity = gau_gpu.opacity.repeat(n_p, 1)
+    gau_gpu.precolor = gau_gpu.precolor.repeat(n_p, 1)
+    return gau_gpu
+
+   
+import threading
+import time
+frame_idx = 0
+total_frame_cnt = 0
+animation_fps = 30
+def update_frame_idx():
+    global frame_idx
+    while True:
+        frame_idx += 1
+        # if frame_idx >= total_frame_cnt:
+        #     frame_idx = 0
+        time.sleep(1 / animation_fps)  
 
 class CUDARenderer(GaussianRenderBase):
     def __init__(self, w, h):
@@ -138,6 +184,13 @@ class CUDARenderer(GaussianRenderBase):
         self.need_rerender = True
         self.update_vsync()
 
+        self.motion_data = None
+
+        # Start the frame index update thread
+        frame_thread = threading.Thread(target=update_frame_idx)
+        frame_thread.daemon = True
+        frame_thread.start()
+
     def update_vsync(self):
         if wglSwapIntervalEXT is not None:
             wglSwapIntervalEXT(1 if self.reduce_updates else 0)
@@ -149,6 +202,14 @@ class CUDARenderer(GaussianRenderBase):
         self.gaussians = gaus_cuda_from_cpu(gaus)
         self.raster_settings["sh_degree"] = int(np.round(np.sqrt(self.gaussians.sh_dim))) - 1
 
+    def update_gaussian_avatar_w_precolor(self, gaus: util_gau.GaussianAvatarData, optimized:bool = False):
+        self.need_rerender = True
+        if optimized:
+            pass
+        else:
+            self.gaussians = avatar_cuda_from_cpu_raw(gaus)
+        self.copies = gaus.copies
+    
     def sort_and_update(self, camera: util.Camera):
         self.need_rerender = True
 
@@ -241,6 +302,99 @@ class CUDARenderer(GaussianRenderBase):
                 rotations = self.gaussians.rot,
                 cov3D_precomp = None
             )
+
+        img = img.permute(1, 2, 0)
+        img = torch.concat([img, torch.ones_like(img[..., :1])], dim=-1)
+        img = img.contiguous()
+        height, width = img.shape[:2]
+        # transfer
+        (err,) = cu.cudaGraphicsMapResources(1, self.cuda_image, cu.cudaStreamLegacy)
+        if err != cu.cudaError_t.cudaSuccess:
+            raise RuntimeError("Unable to map graphics resource")
+        err, array = cu.cudaGraphicsSubResourceGetMappedArray(self.cuda_image, 0, 0)
+        if err != cu.cudaError_t.cudaSuccess:
+            raise RuntimeError("Unable to get mapped array")
+        
+        (err,) = cu.cudaMemcpy2DToArrayAsync(
+            array,
+            0,
+            0,
+            img.data_ptr(),
+            4 * 4 * width,
+            4 * 4 * width,
+            height,
+            cu.cudaMemcpyKind.cudaMemcpyDeviceToDevice,
+            cu.cudaStreamLegacy,
+        )
+        if err != cu.cudaError_t.cudaSuccess:
+            raise RuntimeError("Unable to copy from tensor to texture")
+        (err,) = cu.cudaGraphicsUnmapResources(1, self.cuda_image, cu.cudaStreamLegacy)
+        if err != cu.cudaError_t.cudaSuccess:
+            raise RuntimeError("Unable to unmap graphics resource")
+
+        gl.glUseProgram(self.program)
+        gl.glBindTexture(gl.GL_TEXTURE_2D, self.tex)
+        gl.glBindVertexArray(self.vao)
+
+    def update_pos_raw(self, optimized=False):
+        num_person = self.gaussians.total_num_person
+        num_points_per_subject = self.gaussians.num_points_per_subject
+        person_cnt = 0
+        for copy in self.copies:
+            motion_len = copy['motion_list'][0].shape[0]
+            for person_idx in range(num_person):
+                xyz = copy['motion_list'][person_idx][frame_idx % motion_len].copy()
+                xyz[:, :] += copy['transl_list'][person_idx]
+                # xyz = copy['motion_list'][person_idx][frame_idx % motion_len]
+                # xyz[:, :] += copy['transl_list'][person_idx]
+                self.gaussians.xyz[num_points_per_subject*(person_cnt+person_idx) : num_points_per_subject*(person_cnt+person_idx+1)] = torch.tensor(xyz).float().cuda().requires_grad_(False)
+            person_cnt += num_person
+
+    def draw_w_precolor(self, optimized=False):
+        if self.reduce_updates and not self.need_rerender:
+            gl.glUseProgram(self.program)
+            gl.glBindTexture(gl.GL_TEXTURE_2D, self.tex)
+            gl.glBindVertexArray(self.vao)
+            gl.glDrawArrays(gl.GL_TRIANGLES, 0, 3)
+            return
+
+        self.need_rerender = False
+
+        # run cuda rasterizer now is just a placeholder
+        # img = torch.meshgrid((torch.linspace(0, 1, 720), torch.linspace(0, 1, 1280)))
+        # img = torch.stack([img[0], img[1], img[1], img[1]], dim=-1)
+        # img = img.float().cuda(0)
+        # img = img.contiguous()
+        raster_settings = GaussianRasterizationSettings(**self.raster_settings)
+        rasterizer = GaussianRasterizer(raster_settings=raster_settings)
+        # means2D = torch.zeros_like(self.gaussians.xyz, dtype=self.gaussians.xyz.dtype, requires_grad=False, device="cuda")
+
+        if optimized:
+            with torch.no_grad():
+                img, radii = rasterizer(
+                    # means3D = self.gaussians.xyz,
+                    num_person = self.gaussians.total_num_person,
+                    means3D = self.gaussians.xyz_all,
+                    means2D = None,
+                    shs = None,
+                    colors_precomp = self.gaussians.precolor,
+                    opacities = self.gaussians.opacity,
+                    scales = self.gaussians.scale,
+                    rotations = self.gaussians.rot,
+                    cov3D_precomp = None
+                )
+        else:
+            with torch.no_grad():
+                img, radii = rasterizer(
+                    means3D = self.gaussians.xyz,
+                    means2D = None,
+                    shs = None,
+                    colors_precomp = self.gaussians.precolor,
+                    opacities = self.gaussians.opacity,
+                    scales = self.gaussians.scale,
+                    rotations = self.gaussians.rot,
+                    cov3D_precomp = None
+                )
 
         img = img.permute(1, 2, 0)
         img = torch.concat([img, torch.ones_like(img[..., :1])], dim=-1)
