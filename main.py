@@ -12,6 +12,7 @@ import os
 import sys
 import argparse
 from renderer_ogl import OpenGLRenderer, GaussianRenderBase
+from renderer_cuda import CUDARenderer
 
 
 # Add the directory containing main.py to the Python path
@@ -23,15 +24,15 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 
 g_camera = util.Camera(720, 1280)
-BACKEND_OGL=0
-BACKEND_CUDA=1
+BACKEND_OGL=1
+BACKEND_CUDA=0
 g_renderer_list = [
     None, # ogl
 ]
-g_renderer_idx = BACKEND_OGL
-g_renderer: GaussianRenderBase = g_renderer_list[g_renderer_idx]
+g_renderer_idx = BACKEND_CUDA
+g_renderer: CUDARenderer = g_renderer_list[g_renderer_idx]
 g_scale_modifier = 1.
-g_auto_sort = False
+g_auto_sort = True
 g_show_control_win = True
 g_show_help_win = True
 g_show_camera_win = False
@@ -133,15 +134,8 @@ def main():
     glfw.set_window_size_callback(window, window_resize_callback)
 
     # init renderer
-    g_renderer_list[BACKEND_OGL] = OpenGLRenderer(g_camera.w, g_camera.h)
-    try:
-        from renderer_cuda import CUDARenderer
-        g_renderer_list += [CUDARenderer(g_camera.w, g_camera.h)]
-    except ImportError:
-        g_renderer_idx = BACKEND_OGL
-    else:
-        g_renderer_idx = BACKEND_CUDA
-
+    g_renderer_list[BACKEND_CUDA] = CUDARenderer(g_camera.w, g_camera.h)
+    g_renderer_list += [OpenGLRenderer(g_camera.w, g_camera.h)]
     g_renderer = g_renderer_list[g_renderer_idx]
 
     # gaussian data
@@ -180,7 +174,7 @@ def main():
         if g_show_control_win:
             if imgui.begin("Control", True):
                 # rendering backend
-                changed, g_renderer_idx = imgui.combo("backend", g_renderer_idx, ["ogl", "cuda"][:len(g_renderer_list)])
+                changed, g_renderer_idx = imgui.combo("backend", g_renderer_idx, ["cuda", "ogl"][:len(g_renderer_list)])
                 if changed:
                     g_renderer = g_renderer_list[g_renderer_idx]
                     update_activated_renderer_state(gaussians)
