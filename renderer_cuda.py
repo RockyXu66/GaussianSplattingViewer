@@ -341,11 +341,11 @@ class CUDARenderer(GaussianRenderBase):
         num_points_per_subject = self.gaussians.num_points_per_subject
         person_cnt = 0
         for copy in self.copies:
-            motion_len = copy['motion_list'][0].shape[0]
+            motion_len = copy['motion'].shape[0]
             for person_idx in range(num_person):
-                xyz = copy['motion_list'][person_idx][frame_idx % motion_len].copy()
+                xyz = copy['motion'][frame_idx % motion_len].copy()
                 xyz[:, :] += copy['transl_list'][person_idx]
-                # xyz = copy['motion_list'][person_idx][frame_idx % motion_len]
+                # xyz = copy['motion'][frame_idx % motion_len]
                 # xyz[:, :] += copy['transl_list'][person_idx]
                 self.gaussians.xyz[num_points_per_subject*(person_cnt+person_idx) : num_points_per_subject*(person_cnt+person_idx+1)] = torch.tensor(xyz).float().cuda().requires_grad_(False)
             person_cnt += num_person

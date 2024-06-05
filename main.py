@@ -346,3 +346,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main()
+
+""" Compile different cuda program
+raw version:
+cd /home/yixu/Projects/GaussianSplatting/gaussian-splatting && pip uninstall -y diff-gaussian-rasterization && pip install submodules/diff-gaussian-rasterization
+
+optimized version:
+cd /raid/yixu/Projects/GaussianSplatting/gaussian-splatting && pip uninstall -y diff-gaussian-rasterization && pip install submodules/diff-gaussian-rasterization
+"""

@@ -171,10 +171,10 @@ def load_identity(identity_dict):
                 # motion_list.append(random_rotate(motion_data) + np.array([j - col/2, 0, i]))
                 # motion_list[i * col + j] = random_rotate(motion_data) + grid_pos[i, j]
                 transl_list.append(np.array([(j - col/2)*unit_dist, 0, -i*unit_dist]))
-                motion_list.append(motion_data)
+                # motion_list.append(motion_data)
         copies.append({
             'num_person': num_person,
-            'motion_list': motion_list,
+            'motion': motion_data,
             'transl_list': transl_list,
         })
         total_num_person += num_person
