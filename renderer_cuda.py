@@ -77,11 +77,11 @@ class GaussianDataCUDA:
 class GaussianAvatarCUDA:
     total_num_person: int
     num_points_per_subject: int
-    xyz: torch.Tensor
     rot: torch.Tensor
     scale: torch.Tensor
     opacity: torch.Tensor
     precolor: torch.Tensor
+    xyz: torch.Tensor = None
     xyz_all: torch.Tensor = None
     sh: torch.Tensor = None
     
@@ -125,14 +125,48 @@ def avatar_cuda_from_cpu_raw(gau: util_gau.GaussianAvatarData) -> GaussianAvatar
     )
 
     ''' For original cuda program '''
-    n_p = gau.total_num_person
-    gau_gpu.xyz = gau_gpu.xyz.repeat(n_p, 1)
-    gau_gpu.rot = gau_gpu.rot.repeat(n_p, 1)
-    gau_gpu.scale = gau_gpu.scale.repeat(n_p, 1)
-    gau_gpu.opacity = gau_gpu.opacity.repeat(n_p, 1)
-    gau_gpu.precolor = gau_gpu.precolor.repeat(n_p, 1)
+    total_num_person = gau.total_num_person
+    num_points_per_subject = gau.num_points_per_subject
+    gau_gpu.xyz = gau_gpu.xyz.repeat(total_num_person, 1)
+    gau_gpu.rot = gau_gpu.rot.repeat(total_num_person, 1)
+    gau_gpu.scale = gau_gpu.scale.repeat(total_num_person, 1)
+    gau_gpu.opacity = gau_gpu.opacity.repeat(total_num_person, 1)
+    gau_gpu.precolor = gau_gpu.precolor.repeat(total_num_person, 1)
+    person_cnt = 0
+    for copy in gau.copies:
+        num_person = copy['num_person']
+        motion = copy['motion']
+        for person_idx in range(num_person):
+            xyz = motion[0].copy()  # only set the first frame
+            xyz[:, :] += copy['transl_list'][person_idx]
+            gau_gpu.xyz[num_points_per_subject*(person_cnt+person_idx) : num_points_per_subject*(person_cnt+person_idx+1)] = torch.tensor(xyz).float().cuda().requires_grad_(False)
+        person_cnt += num_person
     return gau_gpu
 
+def avatar_cuda_from_cpu_optimized(gau: util_gau.GaussianAvatarData) -> GaussianAvatarCUDA:
+    # identity_points = gau.xyz.shape[0]
+    num_points_per_subject = gau.num_points_per_subject
+    xyz_all = torch.zeros((num_points_per_subject * gau.total_num_person, 3), dtype=torch.float32).cuda().requires_grad_(False)
+    person_cnt = 0
+    for copy in gau.copies:
+        num_person = copy['num_person']
+        motion = copy['motion']
+        for person_idx in range(num_person):
+            xyz = motion[0].copy()  # only set the first frame
+            xyz[:, :] += copy['transl_list'][person_idx]
+            xyz_all[num_points_per_subject*(person_cnt+person_idx) : num_points_per_subject*(person_cnt+person_idx+1)] = torch.tensor(xyz).float().cuda().requires_grad_(False)
+        person_cnt += num_person
+    gau_gpu = GaussianAvatarCUDA(
+        total_num_person = gau.total_num_person,
+        num_points_per_subject = gau.num_points_per_subject,
+        # xyz = torch.tensor(gau.xyz).float().cuda().requires_grad_(False),
+        xyz_all = xyz_all,
+        rot = torch.tensor(gau.rot).float().cuda().requires_grad_(False),
+        scale = torch.tensor(gau.scale).float().cuda().requires_grad_(False),
+        opacity = torch.tensor(gau.opacity).float().cuda().requires_grad_(False),
+        precolor = torch.tensor(gau.colors_precomp).float().cuda().requires_grad_(False),
+    )
+    return gau_gpu
    
 import threading
 import time
@@ -194,8 +228,8 @@ class CUDARenderer(GaussianRenderBase):
     def update_vsync(self):
         if wglSwapIntervalEXT is not None:
             wglSwapIntervalEXT(1 if self.reduce_updates else 0)
-        else:
-            print("VSync is not supported")
+        # else:
+        #     print("VSync is not supported")
 
     def update_gaussian_data(self, gaus: util_gau.GaussianData):
         self.need_rerender = True
@@ -205,7 +239,7 @@ class CUDARenderer(GaussianRenderBase):
     def update_gaussian_avatar_w_precolor(self, gaus: util_gau.GaussianAvatarData, optimized:bool = False):
         self.need_rerender = True
         if optimized:
-            pass
+            self.gaussians = avatar_cuda_from_cpu_optimized(gaus)
         else:
             self.gaussians = avatar_cuda_from_cpu_raw(gaus)
         self.copies = gaus.copies
@@ -335,8 +369,9 @@ class CUDARenderer(GaussianRenderBase):
         gl.glUseProgram(self.program)
         gl.glBindTexture(gl.GL_TEXTURE_2D, self.tex)
         gl.glBindVertexArray(self.vao)
+        gl.glDrawArrays(gl.GL_TRIANGLES, 0, 3)
 
-    def update_pos_raw(self, optimized=False):
+    def update_pos(self, optimized=False):
         num_person = self.gaussians.total_num_person
         num_points_per_subject = self.gaussians.num_points_per_subject
         person_cnt = 0
@@ -347,7 +382,10 @@ class CUDARenderer(GaussianRenderBase):
                 xyz[:, :] += copy['transl_list'][person_idx]
                 # xyz = copy['motion'][frame_idx % motion_len]
                 # xyz[:, :] += copy['transl_list'][person_idx]
-                self.gaussians.xyz[num_points_per_subject*(person_cnt+person_idx) : num_points_per_subject*(person_cnt+person_idx+1)] = torch.tensor(xyz).float().cuda().requires_grad_(False)
+                if optimized:
+                    self.gaussians.xyz_all[num_points_per_subject*(person_cnt+person_idx) : num_points_per_subject*(person_cnt+person_idx+1)] = torch.tensor(xyz).float().cuda().requires_grad_(False)
+                else:
+                    self.gaussians.xyz[num_points_per_subject*(person_cnt+person_idx) : num_points_per_subject*(person_cnt+person_idx+1)] = torch.tensor(xyz).float().cuda().requires_grad_(False)
             person_cnt += num_person
 
     def draw_w_precolor(self, optimized=False):
@@ -358,7 +396,7 @@ class CUDARenderer(GaussianRenderBase):
             gl.glDrawArrays(gl.GL_TRIANGLES, 0, 3)
             return
 
-        self.need_rerender = False
+        # self.need_rerender = False
 
         # run cuda rasterizer now is just a placeholder
         # img = torch.meshgrid((torch.linspace(0, 1, 720), torch.linspace(0, 1, 1280)))

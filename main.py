@@ -153,14 +153,20 @@ def main():
     crowd_list = [
         {
             'id': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411.npz',
+            # 'id': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_128_stage1_20240530_191638.npz',
             'copy': [ 
-                # {'num_person': 6, 'motion': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411_pos_list_cmu05_14.npy'}, 
-                {'num_person': 100, 'motion': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411_pos_list_op8_poses.npy'}, 
+                {'num_person': 6, 'motion': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411_pos_list_cmu05_14.npy'}, 
+                # {'num_person': 200, 'motion': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411_pos_list_op8_poses.npy'}, 
                 # {'num_person': 100, 'motion': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411_pos_list_Walking_3_poses.npy'}, 
+
+                # {'num_person': 5000, 'motion': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_128_stage1_20240530_191638_pos_list_op8_poses.npy'}, 
             ]
         },
     ]
-    optimized = False
+    optimized = True
+    # optimized = False
+    with_motion = True
+    # with_motion = False
     gau_avatar = util_gau.load_identity(crowd_list[0])
     update_activated_renderer_state_avatar(gau_avatar, optimized)
     
@@ -177,8 +183,8 @@ def main():
         update_camera_intrin_lazy()
         
         # g_renderer.draw()
-        # g_renderer.update_pos()
-        g_renderer.update_pos_raw(optimized)
+        if with_motion:
+            g_renderer.update_pos(optimized)
         g_renderer.draw_w_precolor(optimized)
 
         # imgui ui
@@ -244,10 +250,10 @@ def main():
                 if changed:
                     g_renderer.set_scale_modifier(g_scale_modifier)
                 
-                # render mode
-                changed, g_render_mode = imgui.combo("shading", g_render_mode, g_render_mode_tables)
-                if changed:
-                    g_renderer.set_render_mod(g_render_mode - 4)
+                # # render mode
+                # changed, g_render_mode = imgui.combo("shading", g_render_mode, g_render_mode_tables)
+                # if changed:
+                #     g_renderer.set_render_mod(g_render_mode - 4)
                 
                 # sort button
                 if imgui.button(label='sort Gaussians'):
@@ -256,31 +262,31 @@ def main():
                 changed, g_auto_sort = imgui.checkbox(
                         "auto sort", g_auto_sort,
                     )
-                if g_auto_sort:
-                    g_renderer.sort_and_update(g_camera)
+                # if g_auto_sort:
+                #     g_renderer.sort_and_update(g_camera)
                 
-                if imgui.button(label='save image'):
-                    width, height = glfw.get_framebuffer_size(window)
-                    nrChannels = 3;
-                    stride = nrChannels * width;
-                    stride += (4 - stride % 4) if stride % 4 else 0
-                    gl.glPixelStorei(gl.GL_PACK_ALIGNMENT, 4)
-                    gl.glReadBuffer(gl.GL_FRONT)
-                    bufferdata = gl.glReadPixels(0, 0, width, height, gl.GL_RGB, gl.GL_UNSIGNED_BYTE)
-                    img = np.frombuffer(bufferdata, np.uint8, -1).reshape(height, width, 3)
-                    imageio.imwrite("save.png", img[::-1])
-                    # save intermediate information
-                    # np.savez(
-                    #     "save.npz",
-                    #     gau_xyz=gaussians.xyz,
-                    #     gau_s=gaussians.scale,
-                    #     gau_rot=gaussians.rot,
-                    #     gau_c=gaussians.sh,
-                    #     gau_a=gaussians.opacity,
-                    #     viewmat=g_camera.get_view_matrix(),
-                    #     projmat=g_camera.get_project_matrix(),
-                    #     hfovxyfocal=g_camera.get_htanfovxy_focal()
-                    # )
+                # if imgui.button(label='save image'):
+                #     width, height = glfw.get_framebuffer_size(window)
+                #     nrChannels = 3;
+                #     stride = nrChannels * width;
+                #     stride += (4 - stride % 4) if stride % 4 else 0
+                #     gl.glPixelStorei(gl.GL_PACK_ALIGNMENT, 4)
+                #     gl.glReadBuffer(gl.GL_FRONT)
+                #     bufferdata = gl.glReadPixels(0, 0, width, height, gl.GL_RGB, gl.GL_UNSIGNED_BYTE)
+                #     img = np.frombuffer(bufferdata, np.uint8, -1).reshape(height, width, 3)
+                #     imageio.imwrite("save.png", img[::-1])
+                #     # save intermediate information
+                #     # np.savez(
+                #     #     "save.npz",
+                #     #     gau_xyz=gaussians.xyz,
+                #     #     gau_s=gaussians.scale,
+                #     #     gau_rot=gaussians.rot,
+                #     #     gau_c=gaussians.sh,
+                #     #     gau_a=gaussians.opacity,
+                #     #     viewmat=g_camera.get_view_matrix(),
+                #     #     projmat=g_camera.get_project_matrix(),
+                #     #     hfovxyfocal=g_camera.get_htanfovxy_focal()
+                #     # )
                 imgui.end()
 
         if g_show_camera_win:
@@ -349,8 +355,8 @@ if __name__ == "__main__":
 
 """ Compile different cuda program
 raw version:
-cd /home/yixu/Projects/GaussianSplatting/gaussian-splatting && pip uninstall -y diff-gaussian-rasterization && pip install submodules/diff-gaussian-rasterization
+cd /raid/yixu/Projects/GaussianSplatting/gaussian-splatting && pip uninstall -y diff-gaussian-rasterization && pip install submodules/diff-gaussian-rasterization
 
 optimized version:
-cd /raid/yixu/Projects/GaussianSplatting/gaussian-splatting && pip uninstall -y diff-gaussian-rasterization && pip install submodules/diff-gaussian-rasterization
+cd /home/yixu/Projects/GaussianSplatting/gaussian-splatting && pip uninstall -y diff-gaussian-rasterization && pip install submodules/diff-gaussian-rasterization
 """

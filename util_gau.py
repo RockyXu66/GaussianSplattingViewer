@@ -1,6 +1,7 @@
 import numpy as np
 from plyfile import PlyData
 from dataclasses import dataclass
+from loguru import logger
 import random
 
 @dataclass
@@ -129,6 +130,9 @@ def load_ply(path):
 
 
 def load_npz(file_path):
+    '''
+    Save the npz model in `/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/model/avatar_model.py (850)`
+    '''
     data = np.load(file_path)
     xyz = data['means3D']
     # xyz = rotate_point_cloud(xyz)
@@ -154,17 +158,20 @@ def load_identity(identity_dict):
     total_num_person = 0
     radius_range = 10
     num_points_per_subject = data.rot.shape[0]
+    row = 10; col = 10      # 100
+    # row = 35; col = 30      # 1000
+    # row = 45; col = 45      # 2000
+    # row = 71; col = 71      # 5000
+    logger.info(f'Grid size: row x col -> {row} x {col}')
     for copy in identity_dict['copy']:
         motion_file_path = copy['motion']
         motion_data = load_motion(motion_file_path)
         num_person = copy['num_person']
         transl_list = []
         # motion_list = np.empty((num_person, motion_data.shape[0], num_points_per_subject, 3), dtype=np.float32)
-        motion_list = []
-        row = 10
-        col = 10
+        # motion_list = []
         unit_dist = 1.3
-        assert row * col == num_person
+        assert row * col > total_num_person and row * col > num_person
         # grid_pos = np.arange(0, row * col).reshape(row, col)
         for i in range(row):
             for j in range(col):
@@ -172,6 +179,10 @@ def load_identity(identity_dict):
                 # motion_list[i * col + j] = random_rotate(motion_data) + grid_pos[i, j]
                 transl_list.append(np.array([(j - col/2)*unit_dist, 0, -i*unit_dist]))
                 # motion_list.append(motion_data)
+                if len(transl_list) == num_person:
+                    break
+            if len(transl_list) == num_person:
+                break
         copies.append({
             'num_person': num_person,
             'motion': motion_data,
