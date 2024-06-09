@@ -108,8 +108,8 @@ def update_activated_renderer_state(gaus: util_gau.GaussianData):
     g_renderer.update_camera_intrin(g_camera)
     g_renderer.set_render_reso(g_camera.w, g_camera.h)
 
-def update_activated_renderer_state_avatar(gaus: util_gau.GaussianAvatarData, optimized=False):
-    g_renderer.update_gaussian_avatar_w_precolor(gaus, optimized)
+def update_activated_renderer_state_avatar(gaus_list: list[util_gau.GaussianAvatarData], optimized=False):
+    g_renderer.update_gaussian_avatar_w_precolor(gaus_list, optimized)
     g_renderer.sort_and_update(g_camera)
     g_renderer.set_scale_modifier(g_scale_modifier)
     g_renderer.set_render_mod(g_render_mode - 3)
@@ -150,16 +150,50 @@ def main():
     # gaussian data
     gaussians = util_gau.naive_gaussian()
 
+    model_root_folder = '/raid/yixu/Data/Data/GaussianAvatar/output'
+    motion_root_folder = '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data'
+    motion_list = [
+        'Vasso_Bachata_01_poses.pt',    # inplace
+        '05_14_poses.pt',
+        'op8_poses.pt',
+        'Andria_Satisfied_v1_C3D_poses.pt',
+    ]
+
     crowd_list = [
         {
-            'id': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411.npz',
-            # 'id': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_128_stage1_20240530_191638.npz',
+            'id': f'{model_root_folder}/Theo_0522_1624_stage1_20240522_215411/Theo_0522_1624_stage1_20240522_215411-res.pt',
             'copy': [ 
-                {'num_person': 6, 'motion': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411_pos_list_cmu05_14.npy'}, 
-                # {'num_person': 200, 'motion': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411_pos_list_op8_poses.npy'}, 
-                # {'num_person': 100, 'motion': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_stage1_20240522_215411_pos_list_Walking_3_poses.npy'}, 
-
-                # {'num_person': 5000, 'motion': '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data/Theo_0522_1624_128_stage1_20240530_191638_pos_list_op8_poses.npy'}, 
+                {'num_person': 2, 'motion': f'{motion_root_folder}/Vasso_Bachata_01_poses.pt'}, 
+            ]
+        },
+        {
+            'id': f'{model_root_folder}/Theo_0522_1627_stage1_20240522_220812/Theo_0522_1627_stage1_20240522_220812-res.pt',
+            'copy': [ 
+                {'num_person': 2, 'motion': f'{motion_root_folder}/Vasso_Bachata_01_poses.pt'}, 
+            ]
+        },
+        {
+            'id': f'{model_root_folder}/Theo_0522_1624_128_stage1_20240530_191638/Theo_0522_1624_128_stage1_20240530_191638-res.pt',
+            'copy': [ 
+                {'num_person': 2, 'motion': f'{motion_root_folder}/Vasso_Bachata_01_poses.pt'}, 
+            ]
+        },
+        {
+            'id': f'{model_root_folder}/Theo_0522_1620_stage1_20240522_212911/Theo_0522_1620_stage1_20240522_212911-res.pt',
+            'copy': [ 
+                {'num_person': 2, 'motion': f'{motion_root_folder}/Vasso_Bachata_01_poses.pt'}, 
+            ]
+        },
+        {
+            'id': f'{model_root_folder}/Theo_0522_1616_stage1_20240522_121844/Theo_0522_1616_stage1_20240522_121844-res.pt',
+            'copy': [ 
+                {'num_person': 2, 'motion': f'{motion_root_folder}/Vasso_Bachata_01_poses.pt'}, 
+            ]
+        },
+        {
+            'id': f'{model_root_folder}/Theo_0522_1624_128_stage1_20240530_191638/Theo_0522_1624_128_stage1_20240530_191638-res.pt',
+            'copy': [ 
+                {'num_person': 3, 'motion': f'{motion_root_folder}/Vasso_Bachata_01_poses.pt'}, 
             ]
         },
     ]
@@ -167,8 +201,15 @@ def main():
     # optimized = False
     with_motion = True
     # with_motion = False
-    gau_avatar = util_gau.load_identity(crowd_list[0])
-    update_activated_renderer_state_avatar(gau_avatar, optimized)
+
+    # row = 4; col = 4;
+    row = 10; col = 10      # 100
+    # row = 35; col = 30      # 1000
+    # row = 45; col = 45      # 2000
+    # row = 71; col = 71      # 5000
+    unit_dist = 1.3     # distance between two people
+    gau_avatar_list = util_gau.load_crowd(crowd_list, row, col, unit_dist=unit_dist)
+    update_activated_renderer_state_avatar(gau_avatar_list, optimized)
     
     # settings
     while not glfw.window_should_close(window):
@@ -216,7 +257,7 @@ def main():
                         "reduce updates", g_renderer.reduce_updates,
                     )
 
-                total_num_gaus = gau_avatar.total_num_person * gau_avatar.num_points_per_subject
+                total_num_gaus = np.sum([gau_avatar.total_num_person * gau_avatar.num_points_per_subject for gau_avatar in gau_avatar_list])
                 imgui.text(f"# of Gaus = {total_num_gaus}")
                 if imgui.button(label='open ply'):
                     file_path = filedialog.askopenfilename(title="open ply",

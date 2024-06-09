@@ -2,6 +2,7 @@ import numpy as np
 from plyfile import PlyData
 from dataclasses import dataclass
 from loguru import logger
+import torch
 import random
 
 @dataclass
@@ -12,6 +13,7 @@ class GaussianData:
     opacity: np.ndarray
     sh: np.ndarray = None
     colors_precomp: np.ndarray = None
+    query_lbs: torch.Tensor = None
     def flat(self) -> np.ndarray:
         ret = np.concatenate([self.xyz, self.rot, self.scale, self.opacity, self.sh], axis=-1)
         return np.ascontiguousarray(ret)
@@ -34,6 +36,7 @@ class GaussianAvatarData:
     opacity: np.ndarray
     sh: np.ndarray = None
     colors_precomp: np.ndarray = None
+    query_lbs: torch.Tensor = None
     def flat(self) -> np.ndarray:
         ret = np.concatenate([self.xyz, self.rot, self.scale, self.opacity, self.sh], axis=-1)
         return np.ascontiguousarray(ret)
@@ -143,6 +146,18 @@ def load_npz(file_path):
     colors_precomp = data['colors_precomp']
     return GaussianData(xyz=xyz, rot=rot, scale=scale, opacity=opacity, colors_precomp=colors_precomp)
 
+def load_pt(file_path):
+    data = torch.load(file_path)
+    xyz = data['position'].unsqueeze(0)
+    # xyz = rotate_point_cloud(xyz)
+    xyz[:, 0:2] = -xyz[:, 0:2]
+    rot = data['rotation']
+    scale = data['scale']
+    opacity = data['opacity']
+    colors_precomp = data['color']
+    query_lbs = data['query_lbs'].unsqueeze(0)
+    return GaussianData(xyz=xyz, rot=rot, scale=scale, opacity=opacity, colors_precomp=colors_precomp, query_lbs=query_lbs)
+
 def load_motion(file_path):
     xyz_list = np.load(file_path)
     xyz_list[:, :, 0:2] = -xyz_list[:, :, 0:2]
@@ -150,39 +165,27 @@ def load_motion(file_path):
     #     xyz_list[i] = rotate_point_cloud(xyz_list[i])
     return xyz_list
 
-def load_identity(identity_dict):
+def load_identity(identity_dict, row, col, row_idx, col_idx, unit_dist=1.3):
     file_path = identity_dict['id']
-    data = load_npz(file_path)
+    data = load_pt(file_path)
 
     copies = []
     total_num_person = 0
-    radius_range = 10
     num_points_per_subject = data.rot.shape[0]
-    row = 10; col = 10      # 100
-    # row = 35; col = 30      # 1000
-    # row = 45; col = 45      # 2000
-    # row = 71; col = 71      # 5000
-    logger.info(f'Grid size: row x col -> {row} x {col}')
     for copy in identity_dict['copy']:
         motion_file_path = copy['motion']
-        motion_data = load_motion(motion_file_path)
+        motion_data = torch.load(motion_file_path)
         num_person = copy['num_person']
         transl_list = []
-        # motion_list = np.empty((num_person, motion_data.shape[0], num_points_per_subject, 3), dtype=np.float32)
-        # motion_list = []
-        unit_dist = 1.3
-        assert row * col > total_num_person and row * col > num_person
-        # grid_pos = np.arange(0, row * col).reshape(row, col)
-        for i in range(row):
-            for j in range(col):
-                # motion_list.append(random_rotate(motion_data) + np.array([j - col/2, 0, i]))
-                # motion_list[i * col + j] = random_rotate(motion_data) + grid_pos[i, j]
-                transl_list.append(np.array([(j - col/2)*unit_dist, 0, -i*unit_dist]))
-                # motion_list.append(motion_data)
-                if len(transl_list) == num_person:
-                    break
-            if len(transl_list) == num_person:
-                break
+        assert row * col >= total_num_person and row * col >= num_person
+        for _ in range(num_person):
+            # motion_list.append(random_rotate(motion_data) + np.array([j - col/2, 0, i]))
+            # motion_list[i * col + j] = random_rotate(motion_data) + grid_pos[i, j]
+            transl_list.append(np.array([(col_idx - col / 2) * unit_dist, 0, -row_idx * unit_dist]))
+            col_idx += 1
+            if col_idx == col:
+                col_idx = 0
+                row_idx += 1
         copies.append({
             'num_person': num_person,
             'motion': motion_data,
@@ -190,13 +193,25 @@ def load_identity(identity_dict):
         })
         total_num_person += num_person
 
-    return GaussianAvatarData(
+    gau_avatar_data = GaussianAvatarData(
         xyz=data.xyz, rot=data.rot, scale=data.scale, 
         opacity=data.opacity, colors_precomp=data.colors_precomp,
+        query_lbs=data.query_lbs,
         copies=copies,
         total_num_person=total_num_person,
         num_points_per_subject=num_points_per_subject,
     )
+    return gau_avatar_data, row_idx, col_idx
+
+def load_crowd(crowd_list, row, col, unit_dist=1.3):
+    logger.info(f'Grid size: row x col -> {row} x {col}')
+    row_idx = 0
+    col_idx = 0
+    gau_avatar_list = []
+    for identity in crowd_list:
+        gau_avatar, row_idx, col_idx = load_identity(identity, row, col, row_idx, col_idx, unit_dist=unit_dist)
+        gau_avatar_list.append(gau_avatar)
+    return gau_avatar_list
 
 if __name__ == "__main__":
     gs = load_ply("C:\\Users\\MSI_NB\\Downloads\\viewers\\models\\train\\point_cloud\\iteration_7000\\point_cloud.ply")

@@ -8,7 +8,7 @@ import util_gau
 import numpy as np
 import torch
 from renderer_ogl import GaussianRenderBase
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from cuda import cudart as cu
 from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
 
@@ -75,15 +75,18 @@ class GaussianDataCUDA:
 
 @dataclass
 class GaussianAvatarCUDA:
-    total_num_person: int
-    num_points_per_subject: int
-    rot: torch.Tensor
-    scale: torch.Tensor
-    opacity: torch.Tensor
-    precolor: torch.Tensor
-    xyz: torch.Tensor = None
-    xyz_all: torch.Tensor = None
-    sh: torch.Tensor = None
+    num_points_per_subject:     torch.Tensor = None
+    person_cnt_per_subject:     torch.Tensor = None
+    rot:                        torch.Tensor = None
+    scale:                      torch.Tensor = None
+    opacity:                    torch.Tensor = None
+    precolor:                   torch.Tensor = None
+    xyz:                        torch.Tensor = None
+    xyz_all:                    torch.Tensor = None
+    sh:                         torch.Tensor = None
+    query_lbs_list:             list = field(default_factory=list)
+    cano_points_list:           list = field(default_factory=list)
+    copies_list:                list = field(default_factory=list)
     
 
 @dataclass
@@ -113,58 +116,117 @@ def gaus_cuda_from_cpu(gau: util_gau) -> GaussianDataCUDA:
     gaus.sh = gaus.sh.reshape(len(gaus), -1, 3).contiguous()
     return gaus
 
-def avatar_cuda_from_cpu_raw(gau: util_gau.GaussianAvatarData) -> GaussianAvatarCUDA:
-    gau_gpu = GaussianAvatarCUDA(
-        total_num_person = gau.total_num_person,
-        num_points_per_subject = gau.num_points_per_subject,
-        xyz = torch.tensor(gau.xyz).float().cuda().requires_grad_(False),
-        rot = torch.tensor(gau.rot).float().cuda().requires_grad_(False),
-        scale = torch.tensor(gau.scale).float().cuda().requires_grad_(False),
-        opacity = torch.tensor(gau.opacity).float().cuda().requires_grad_(False),
-        precolor = torch.tensor(gau.colors_precomp).float().cuda().requires_grad_(False),
-    )
+def avatar_cuda_from_cpu_raw(gau_list: list[util_gau.GaussianAvatarData]) -> GaussianAvatarCUDA:
+    num_identities = len(gau_list)
+    xyz_all = torch.concat([gau.xyz[0].repeat(gau.total_num_person, 1) for gau in gau_list], dim=0).float().cuda().requires_grad_(False)
+    rot_all = torch.concat([gau.rot.repeat(gau.total_num_person, 1) for gau in gau_list], dim=0).float().cuda().requires_grad_(False)
+    scale_all = torch.concat([gau.scale.repeat(gau.total_num_person, 1) for gau in gau_list], dim=0).float().cuda().requires_grad_(False)
+    opacity_all = torch.concat([gau.opacity.repeat(gau.total_num_person, 1) for gau in gau_list], dim=0).float().cuda().requires_grad_(False)
+    precolor_all = torch.concat([gau.colors_precomp.repeat(gau.total_num_person, 1) for gau in gau_list], dim=0).float().cuda().requires_grad_(False)
+
+    ''' Set the position for the first frame from motions '''
+    xyz_last_idx = 0
+    for identity_idx in range(num_identities):
+        copy_num_point_per_identity = gau_list[identity_idx].num_points_per_subject
+        for copy in gau_list[identity_idx].copies:
+            copy_num_person = copy['num_person']
+            motion = copy['motion']
+            transl_list = copy['transl_list']
+            for person_idx in range(copy_num_person):
+                cano2live_jnt_mats = motion[0:1].clone()  # only set the first frame
+                pt_mats = torch.einsum('bnj,bjxy->bnxy', gau_list[identity_idx].query_lbs, cano2live_jnt_mats)
+                xyz = torch.einsum('bnxy,bny->bnx', pt_mats[..., :3, :3], gau_list[identity_idx].xyz) + pt_mats[..., :3, 3]
+                xyz = xyz[0]
+                xyz[:, 0:2] = -xyz[:, 0:2]
+                xyz[:, :] += transl_list[person_idx]
+                xyz_all[xyz_last_idx:xyz_last_idx+copy_num_point_per_identity] = xyz.cuda().requires_grad_(False)
+                xyz_last_idx += copy_num_point_per_identity
 
     ''' For original cuda program '''
-    total_num_person = gau.total_num_person
-    num_points_per_subject = gau.num_points_per_subject
-    gau_gpu.xyz = gau_gpu.xyz.repeat(total_num_person, 1)
-    gau_gpu.rot = gau_gpu.rot.repeat(total_num_person, 1)
-    gau_gpu.scale = gau_gpu.scale.repeat(total_num_person, 1)
-    gau_gpu.opacity = gau_gpu.opacity.repeat(total_num_person, 1)
-    gau_gpu.precolor = gau_gpu.precolor.repeat(total_num_person, 1)
-    person_cnt = 0
-    for copy in gau.copies:
-        num_person = copy['num_person']
-        motion = copy['motion']
-        for person_idx in range(num_person):
-            xyz = motion[0].copy()  # only set the first frame
-            xyz[:, :] += copy['transl_list'][person_idx]
-            gau_gpu.xyz[num_points_per_subject*(person_cnt+person_idx) : num_points_per_subject*(person_cnt+person_idx+1)] = torch.tensor(xyz).float().cuda().requires_grad_(False)
-        person_cnt += num_person
+    num_points_concat = torch.empty((num_identities), dtype=torch.int32).cuda().requires_grad_(False)
+    person_cnt_concat = torch.empty((num_identities), dtype=torch.int32).cuda().requires_grad_(False)
+    gau_copies_list = []
+    cano_points_list = []
+    query_lbs_list = []
+    for identity_idx in range(num_identities):
+        for i in range(len(gau_list[identity_idx].copies)):
+            gau_list[identity_idx].copies[i]['motion'] = gau_list[identity_idx].copies[i]['motion'].cuda()
+            gau_list[identity_idx].copies[i]['transl_list'] = torch.tensor(np.array(gau_list[identity_idx].copies[i]['transl_list'])).cuda()
+        copy_num_point_per_identity = gau_list[identity_idx].num_points_per_subject
+        num_points_concat[identity_idx] = copy_num_point_per_identity
+        person_cnt_concat[identity_idx] = gau_list[identity_idx].total_num_person
+        gau_copies_list.append(gau_list[identity_idx].copies)
+        cano_points_list.append(gau_list[identity_idx].xyz.cuda().requires_grad_(False))
+        query_lbs_list.append(gau_list[identity_idx].query_lbs.cuda().requires_grad_(False))
+
+    gau_gpu = GaussianAvatarCUDA(
+        num_points_per_subject  = num_points_concat,
+        person_cnt_per_subject  = person_cnt_concat,
+        xyz                     = xyz_all,
+        rot                     = rot_all,
+        scale                   = scale_all,
+        opacity                 = opacity_all,
+        precolor                = precolor_all,
+        query_lbs_list          = query_lbs_list,
+        cano_points_list        = cano_points_list,
+        copies_list             = gau_copies_list,
+    )
     return gau_gpu
 
-def avatar_cuda_from_cpu_optimized(gau: util_gau.GaussianAvatarData) -> GaussianAvatarCUDA:
-    # identity_points = gau.xyz.shape[0]
-    num_points_per_subject = gau.num_points_per_subject
-    xyz_all = torch.zeros((num_points_per_subject * gau.total_num_person, 3), dtype=torch.float32).cuda().requires_grad_(False)
-    person_cnt = 0
-    for copy in gau.copies:
-        num_person = copy['num_person']
-        motion = copy['motion']
-        for person_idx in range(num_person):
-            xyz = motion[0].copy()  # only set the first frame
-            xyz[:, :] += copy['transl_list'][person_idx]
-            xyz_all[num_points_per_subject*(person_cnt+person_idx) : num_points_per_subject*(person_cnt+person_idx+1)] = torch.tensor(xyz).float().cuda().requires_grad_(False)
-        person_cnt += num_person
+def avatar_cuda_from_cpu_optimized(gau_list: list[util_gau.GaussianAvatarData]) -> GaussianAvatarCUDA:
+    num_identities = len(gau_list)
+    total_num_gaus = np.sum([gau.total_num_person * gau.num_points_per_subject for gau in gau_list])
+
+    ''' Collect xyz position data for all identites '''
+    xyz_all = torch.zeros((total_num_gaus, 3), dtype=torch.float32).cuda().requires_grad_(False)
+    num_points_concat = torch.empty((num_identities), dtype=torch.int32).cuda().requires_grad_(False)
+    person_cnt_concat = torch.empty((num_identities), dtype=torch.int32).cuda().requires_grad_(False)
+    xyz_last_idx = 0
+    for identity_idx in range(num_identities):
+        copy_num_point_per_identity = gau_list[identity_idx].num_points_per_subject
+        num_points_concat[identity_idx] = copy_num_point_per_identity
+        person_cnt_concat[identity_idx] = gau_list[identity_idx].total_num_person
+        for copy in gau_list[identity_idx].copies:
+            copy_num_person = copy['num_person']
+            motion = copy['motion']
+            transl_list = copy['transl_list']
+            for person_idx in range(copy_num_person):
+                cano2live_jnt_mats = motion[0:1].clone()  # only set the first frame
+                pt_mats = torch.einsum('bnj,bjxy->bnxy', gau_list[identity_idx].query_lbs, cano2live_jnt_mats)
+                xyz = torch.einsum('bnxy,bny->bnx', pt_mats[..., :3, :3], gau_list[identity_idx].xyz) + pt_mats[..., :3, 3]
+                xyz = xyz[0]
+                xyz[:, 0:2] = -xyz[:, 0:2]
+                xyz[:, :] += transl_list[person_idx]
+                xyz_all[xyz_last_idx:xyz_last_idx+copy_num_point_per_identity] = xyz.cuda().requires_grad_(False)
+                xyz_last_idx += copy_num_point_per_identity
+
+    ''' Aggregate num_points_per_subject, motions, colors, scales, and query_lbs for different identities'''
+    gau_copies_list = []
+    cano_points_list = []
+    query_lbs_list = []
+    precolor_concat = torch.empty((torch.sum(num_points_concat), 3), dtype=torch.float32).cuda().requires_grad_(False)
+    scale_concat = torch.empty((torch.sum(num_points_concat), 3), dtype=torch.float32).cuda().requires_grad_(False)
+    last_idx = 0
+    for identity_idx in range(num_identities):
+        for i in range(len(gau_list[identity_idx].copies)):
+            gau_list[identity_idx].copies[i]['motion'] = gau_list[identity_idx].copies[i]['motion'].cuda()
+            gau_list[identity_idx].copies[i]['transl_list'] = torch.tensor(np.array(gau_list[identity_idx].copies[i]['transl_list'])).cuda()
+        copy_num_point_per_identity = gau_list[identity_idx].num_points_per_subject
+        gau_copies_list.append(gau_list[identity_idx].copies)
+        cano_points_list.append(gau_list[identity_idx].xyz.cuda().requires_grad_(False))
+        query_lbs_list.append(gau_list[identity_idx].query_lbs.cuda().requires_grad_(False))
+        precolor_concat[last_idx:last_idx+copy_num_point_per_identity] = gau_list[identity_idx].colors_precomp.cuda().requires_grad_(False)
+        scale_concat[last_idx:last_idx+copy_num_point_per_identity] = gau_list[identity_idx].scale.cuda().requires_grad_(False)
+        last_idx += copy_num_point_per_identity
     gau_gpu = GaussianAvatarCUDA(
-        total_num_person = gau.total_num_person,
-        num_points_per_subject = gau.num_points_per_subject,
-        # xyz = torch.tensor(gau.xyz).float().cuda().requires_grad_(False),
-        xyz_all = xyz_all,
-        rot = torch.tensor(gau.rot).float().cuda().requires_grad_(False),
-        scale = torch.tensor(gau.scale).float().cuda().requires_grad_(False),
-        opacity = torch.tensor(gau.opacity).float().cuda().requires_grad_(False),
-        precolor = torch.tensor(gau.colors_precomp).float().cuda().requires_grad_(False),
+        num_points_per_subject  = num_points_concat,
+        person_cnt_per_subject  = person_cnt_concat,
+        xyz_all                 = xyz_all,
+        scale                   = scale_concat,
+        precolor                = precolor_concat,
+        query_lbs_list          = query_lbs_list,
+        cano_points_list        = cano_points_list,
+        copies_list             = gau_copies_list,
     )
     return gau_gpu
    
@@ -236,13 +298,12 @@ class CUDARenderer(GaussianRenderBase):
         self.gaussians = gaus_cuda_from_cpu(gaus)
         self.raster_settings["sh_degree"] = int(np.round(np.sqrt(self.gaussians.sh_dim))) - 1
 
-    def update_gaussian_avatar_w_precolor(self, gaus: util_gau.GaussianAvatarData, optimized:bool = False):
+    def update_gaussian_avatar_w_precolor(self, gaus_list: list[util_gau.GaussianAvatarData], optimized:bool = False):
         self.need_rerender = True
         if optimized:
-            self.gaussians = avatar_cuda_from_cpu_optimized(gaus)
+            self.gaussians = avatar_cuda_from_cpu_optimized(gaus_list)
         else:
-            self.gaussians = avatar_cuda_from_cpu_raw(gaus)
-        self.copies = gaus.copies
+            self.gaussians = avatar_cuda_from_cpu_raw(gaus_list)
     
     def sort_and_update(self, camera: util.Camera):
         self.need_rerender = True
@@ -372,21 +433,30 @@ class CUDARenderer(GaussianRenderBase):
         gl.glDrawArrays(gl.GL_TRIANGLES, 0, 3)
 
     def update_pos(self, optimized=False):
-        num_person = self.gaussians.total_num_person
-        num_points_per_subject = self.gaussians.num_points_per_subject
-        person_cnt = 0
-        for copy in self.copies:
-            motion_len = copy['motion'].shape[0]
-            for person_idx in range(num_person):
-                xyz = copy['motion'][frame_idx % motion_len].copy()
-                xyz[:, :] += copy['transl_list'][person_idx]
-                # xyz = copy['motion'][frame_idx % motion_len]
-                # xyz[:, :] += copy['transl_list'][person_idx]
-                if optimized:
-                    self.gaussians.xyz_all[num_points_per_subject*(person_cnt+person_idx) : num_points_per_subject*(person_cnt+person_idx+1)] = torch.tensor(xyz).float().cuda().requires_grad_(False)
-                else:
-                    self.gaussians.xyz[num_points_per_subject*(person_cnt+person_idx) : num_points_per_subject*(person_cnt+person_idx+1)] = torch.tensor(xyz).float().cuda().requires_grad_(False)
-            person_cnt += num_person
+
+        num_identities = len(self.gaussians.cano_points_list)
+        xyz_last_idx = 0
+        for identity_idx in range(num_identities):
+            copy_num_point_per_identity = self.gaussians.num_points_per_subject[identity_idx]
+            copies = self.gaussians.copies_list[identity_idx]
+            cano_deform_point = self.gaussians.cano_points_list[identity_idx]
+            query_lbs = self.gaussians.query_lbs_list[identity_idx]
+            for copy in copies:
+                motion_len = copy['motion'].shape[0]
+                num_person = copy['num_person']
+                for person_idx in range(num_person):
+                    cano2live_jnt_mats = copy['motion'][frame_idx%motion_len : frame_idx%motion_len+1].clone()
+                    pt_mats = torch.einsum('bnj,bjxy->bnxy', query_lbs, cano2live_jnt_mats)
+                    xyz = torch.einsum('bnxy,bny->bnx', pt_mats[..., :3, :3], cano_deform_point) + pt_mats[..., :3, 3]
+                    xyz = xyz[0]
+                    xyz[:, 0:2] = -xyz[:, 0:2]
+                    xyz[:, :] += copy['transl_list'][person_idx]
+                    if optimized:
+                        self.gaussians.xyz_all[xyz_last_idx:xyz_last_idx+copy_num_point_per_identity] = xyz
+                    else:
+                        # self.gaussians.xyz[num_points_per_subject*(person_cnt+person_idx) : num_points_per_subject*(person_cnt+person_idx+1)] = xyz
+                        self.gaussians.xyz[xyz_last_idx:xyz_last_idx+copy_num_point_per_identity] = xyz
+                    xyz_last_idx += copy_num_point_per_identity
 
     def draw_w_precolor(self, optimized=False):
         if self.reduce_updates and not self.need_rerender:
@@ -410,15 +480,14 @@ class CUDARenderer(GaussianRenderBase):
         if optimized:
             with torch.no_grad():
                 img, radii = rasterizer(
-                    # means3D = self.gaussians.xyz,
-                    num_person = self.gaussians.total_num_person,
+                    num_identities = self.gaussians.num_points_per_subject.shape[0],
+                    num_points_per_subject = self.gaussians.num_points_per_subject,
+                    person_cnt_per_subject = self.gaussians.person_cnt_per_subject,
                     means3D = self.gaussians.xyz_all,
                     means2D = None,
                     shs = None,
                     colors_precomp = self.gaussians.precolor,
-                    opacities = self.gaussians.opacity,
                     scales = self.gaussians.scale,
-                    rotations = self.gaussians.rot,
                     cov3D_precomp = None
                 )
         else:
