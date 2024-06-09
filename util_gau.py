@@ -165,7 +165,19 @@ def load_motion(file_path):
     #     xyz_list[i] = rotate_point_cloud(xyz_list[i])
     return xyz_list
 
-def load_identity(identity_dict, row, col, row_idx, col_idx, unit_dist=1.3):
+def set_transl(crowd_list, row, col, unit_dist=1.3, shuffle_sequence=True):
+    total_num_person = np.sum([copy['num_person'] for identity_dict in crowd_list for copy in identity_dict['copy']])
+    assert row * col >= total_num_person, f'total number of persons ({total_num_person}) is bigger than row x col ({row * col})'
+    transl_list = []
+    for row_idx in range(row):
+        for col_idx in range(col):
+            transl_list.append(np.array([(col_idx - col / 2) * unit_dist, 0, -row_idx * unit_dist]))
+    transl_list = np.array(transl_list)
+    if shuffle_sequence:
+        np.random.shuffle(transl_list)
+    return transl_list
+
+def load_identity(identity_dict, transl_list, transl_idx):
     file_path = identity_dict['id']
     data = load_pt(file_path)
 
@@ -176,20 +188,16 @@ def load_identity(identity_dict, row, col, row_idx, col_idx, unit_dist=1.3):
         motion_file_path = copy['motion']
         motion_data = torch.load(motion_file_path)
         num_person = copy['num_person']
-        transl_list = []
-        assert row * col >= total_num_person and row * col >= num_person
+        identity_transl_list = []
         for _ in range(num_person):
             # motion_list.append(random_rotate(motion_data) + np.array([j - col/2, 0, i]))
             # motion_list[i * col + j] = random_rotate(motion_data) + grid_pos[i, j]
-            transl_list.append(np.array([(col_idx - col / 2) * unit_dist, 0, -row_idx * unit_dist]))
-            col_idx += 1
-            if col_idx == col:
-                col_idx = 0
-                row_idx += 1
+            identity_transl_list.append(transl_list[transl_idx])
+            transl_idx += 1
         copies.append({
             'num_person': num_person,
             'motion': motion_data,
-            'transl_list': transl_list,
+            'transl_list': identity_transl_list,
         })
         total_num_person += num_person
 
@@ -201,15 +209,15 @@ def load_identity(identity_dict, row, col, row_idx, col_idx, unit_dist=1.3):
         total_num_person=total_num_person,
         num_points_per_subject=num_points_per_subject,
     )
-    return gau_avatar_data, row_idx, col_idx
+    return gau_avatar_data, transl_idx
 
-def load_crowd(crowd_list, row, col, unit_dist=1.3):
+def load_crowd(crowd_list, row, col, unit_dist=1.3, shuffle_sequence=True):
     logger.info(f'Grid size: row x col -> {row} x {col}')
-    row_idx = 0
-    col_idx = 0
+    transl_list = set_transl(crowd_list, row, col, unit_dist=1.3, shuffle_sequence=shuffle_sequence)
     gau_avatar_list = []
+    transl_idx = 0
     for identity in crowd_list:
-        gau_avatar, row_idx, col_idx = load_identity(identity, row, col, row_idx, col_idx, unit_dist=unit_dist)
+        gau_avatar, transl_idx = load_identity(identity, transl_list, transl_idx)
         gau_avatar_list.append(gau_avatar)
     return gau_avatar_list
 

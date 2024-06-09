@@ -202,13 +202,14 @@ def main():
     with_motion = True
     # with_motion = False
 
-    # row = 4; col = 4;
-    row = 10; col = 10      # 100
-    # row = 35; col = 30      # 1000
-    # row = 45; col = 45      # 2000
-    # row = 71; col = 71      # 5000
-    unit_dist = 1.3     # distance between two people
-    gau_avatar_list = util_gau.load_crowd(crowd_list, row, col, unit_dist=unit_dist)
+    row = 4; col = 4;
+    # row = 10; col = 10        # 100
+    # row = 35; col = 30        # 1000
+    # row = 45; col = 45        # 2000
+    # row = 71; col = 71        # 5000
+    unit_dist = 1.3             # distance between two people
+    shuffle_sequence = True     # wheather to shuffle the sequence
+    gau_avatar_list = util_gau.load_crowd(crowd_list, row, col, unit_dist=unit_dist, shuffle_sequence=shuffle_sequence)
     update_activated_renderer_state_avatar(gau_avatar_list, optimized)
     
     # settings
@@ -399,5 +400,5 @@ raw version:
 cd /raid/yixu/Projects/GaussianSplatting/gaussian-splatting && pip uninstall -y diff-gaussian-rasterization && pip install submodules/diff-gaussian-rasterization
 
 optimized version:
-cd /home/yixu/Projects/GaussianSplatting/gaussian-splatting && pip uninstall -y diff-gaussian-rasterization && pip install submodules/diff-gaussian-rasterization
+pip uninstall -y diff-gaussian-rasterization && pip install /raid/yixu/Projects/GaussianSplatting/diff-gaussian-rasterization-memory-optimized
 """
