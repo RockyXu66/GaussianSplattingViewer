@@ -439,24 +439,23 @@ class CUDARenderer(GaussianRenderBase):
         for identity_idx in range(num_identities):
             copy_num_point_per_identity = self.gaussians.num_points_per_subject[identity_idx]
             copies = self.gaussians.copies_list[identity_idx]
-            cano_deform_point = self.gaussians.cano_points_list[identity_idx]
             query_lbs = self.gaussians.query_lbs_list[identity_idx]
             for copy in copies:
                 motion_len = copy['motion'].shape[0]
                 num_person = copy['num_person']
-                for person_idx in range(num_person):
-                    cano2live_jnt_mats = copy['motion'][frame_idx%motion_len : frame_idx%motion_len+1].clone()
-                    pt_mats = torch.einsum('bnj,bjxy->bnxy', query_lbs, cano2live_jnt_mats)
-                    xyz = torch.einsum('bnxy,bny->bnx', pt_mats[..., :3, :3], cano_deform_point) + pt_mats[..., :3, 3]
-                    xyz = xyz[0]
-                    xyz[:, 0:2] = -xyz[:, 0:2]
-                    xyz[:, :] += copy['transl_list'][person_idx]
-                    if optimized:
-                        self.gaussians.xyz_all[xyz_last_idx:xyz_last_idx+copy_num_point_per_identity] = xyz
-                    else:
-                        # self.gaussians.xyz[num_points_per_subject*(person_cnt+person_idx) : num_points_per_subject*(person_cnt+person_idx+1)] = xyz
-                        self.gaussians.xyz[xyz_last_idx:xyz_last_idx+copy_num_point_per_identity] = xyz
-                    xyz_last_idx += copy_num_point_per_identity
+
+                cano_deform_point = self.gaussians.cano_points_list[identity_idx].repeat(num_person, 1, 1)
+                cano2live_jnt_mats = copy['motion'][frame_idx%motion_len : frame_idx%motion_len+1].clone().repeat(num_person, 1, 1, 1)
+                pt_mats = torch.einsum('bnj,bjxy->bnxy', query_lbs, cano2live_jnt_mats)
+                xyz = torch.einsum('bnxy,bny->bnx', pt_mats[..., :3, :3], cano_deform_point) + pt_mats[..., :3, 3]
+                xyz[:, :, 0:2] = -xyz[:, :, 0:2]
+                xyz[:, :, :] += copy['transl_list'].unsqueeze(1).repeat(1, xyz.shape[1], 1)
+                xyz = xyz.view(-1, 3)
+                if optimized:
+                    self.gaussians.xyz_all[xyz_last_idx:xyz_last_idx+copy_num_point_per_identity*num_person] = xyz
+                else:
+                    self.gaussians.xyz[xyz_last_idx:xyz_last_idx+copy_num_point_per_identity*num_person] = xyz
+                xyz_last_idx += copy_num_point_per_identity*num_person
 
     def draw_w_precolor(self, optimized=False):
         if self.reduce_updates and not self.need_rerender:
@@ -507,6 +506,19 @@ class CUDARenderer(GaussianRenderBase):
         img = torch.concat([img, torch.ones_like(img[..., :1])], dim=-1)
         img = img.contiguous()
         height, width = img.shape[:2]
+
+        """
+        import cv2
+        import os
+        os.makedirs('images', exist_ok=True)
+        cv2.imwrite(f'images/img_{frame_idx:06d}.png', cv2.cvtColor(img.detach().cpu().numpy()*255, cv2.COLOR_BGR2RGB))
+        """
+        # if frame_idx % 450 == 0:
+        #     import cv2
+        #     import os
+        #     os.makedirs('images', exist_ok=True)
+        #     cv2.imwrite(f'images/img_{frame_idx:06d}.png', cv2.cvtColor(img.detach().cpu().numpy()*255, cv2.COLOR_BGR2RGB))
+
         # transfer
         (err,) = cu.cudaGraphicsMapResources(1, self.cuda_image, cu.cudaStreamLegacy)
         if err != cu.cudaError_t.cudaSuccess:
