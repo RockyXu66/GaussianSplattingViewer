@@ -22,8 +22,11 @@ sys.path.append(dir_path)
 # Change the current working directory to the script's directory
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
+cam_position = np.array([0.0, -0.0, 3.0]).astype(np.float32)
+target = np.array([0.0, -0.2, 0.0]).astype(np.float32)
+up = np.array([0.0, -1.0, 0.0]).astype(np.float32)
 
-g_camera = util.Camera(720, 1280)
+g_camera = util.Camera(720, 1280, cam_position, target, up)
 BACKEND_OGL=1
 BACKEND_CUDA=0
 g_renderer_list = [
@@ -152,64 +155,84 @@ def main():
 
     model_root_folder = '/raid/yixu/Data/Data/GaussianAvatar/output'
     motion_root_folder = '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data'
+
+    identity_list = {
+        'res_512': [
+            f'{model_root_folder}/Theo_0522_1616_512_stage1_20240522_121844/Theo_0522_1616_512_stage1_20240522_121844-res.pt',
+            f'{model_root_folder}/Theo_0522_1620_512_stage1_20240522_212911/Theo_0522_1620_512_stage1_20240522_212911-res.pt',
+            f'{model_root_folder}/Theo_0522_1624_512_stage1_20240522_215411/Theo_0522_1624_512_stage1_20240522_215411-res.pt',
+            f'{model_root_folder}/Theo_0522_1627_512_stage1_20240522_220812/Theo_0522_1627_512_stage1_20240522_220812-res.pt',
+            f'{model_root_folder}/Theo_0523_1704_512_stage1_20240527_223108/Theo_0523_1704_512_stage1_20240527_223108-res.pt',
+            f'{model_root_folder}/Theo_0523_1712_512_stage1_20240611_115316/Theo_0523_1712_512_stage1_20240611_115316-res.pt',
+            f'{model_root_folder}/Theo_0523_1719_512_stage1_20240610_001401/Theo_0523_1719_512_stage1_20240610_001401-res.pt',
+        ],
+        'res_128': [
+            f'{model_root_folder}/Theo_0522_1624_128_stage1_20240530_191638/Theo_0522_1624_128_stage1_20240530_191638-res.pt',
+            f'{model_root_folder}/Theo_0523_1704_128_stage1_20240611_114727/Theo_0523_1704_128_stage1_20240611_114727-res.pt',
+            f'{model_root_folder}/Theo_0523_1707_128_stage1_20240610_000011/Theo_0523_1707_128_stage1_20240610_000011-res.pt',
+            f'{model_root_folder}/Theo_0523_1712_128_stage1_20240610_000332/Theo_0523_1712_128_stage1_20240610_000332-res.pt',
+            f'{model_root_folder}/Theo_0523_1719_128_stage1_20240610_073422/Theo_0523_1719_128_stage1_20240610_073422-res.pt',
+        ],
+        'res_64': [
+            f'{model_root_folder}/Theo_0523_1704_64_stage1_20240611_145151/Theo_0523_1704_64_stage1_20240611_145151-res.pt',
+            f'{model_root_folder}/Theo_0523_1707_64_stage1_20240611_114939/Theo_0523_1707_64_stage1_20240611_114939-res.pt',
+            f'{model_root_folder}/Theo_0523_1712_64_stage1_20240611_192040/Theo_0523_1712_64_stage1_20240611_192040-res.pt',
+            f'{model_root_folder}/Theo_0523_1719_64_stage1_20240611_115125/Theo_0523_1719_64_stage1_20240611_115125-res.pt',
+        ],
+    }
     motion_list = [
         'Vasso_Bachata_01_poses.pt',    # inplace
         '05_14_poses.pt',
         'op8_poses.pt',
         'Andria_Satisfied_v1_C3D_poses.pt',
+
+        'ANDREAS_Hasaposerviko_poses.pt', # inplace dance
+        'ANDREAS_Tatsia_poses.pt',
+        'Nikos_Zeibekiko_C3D_poses.pt',
+        'StefanosKoullapis_Reggaeton_C3D_poses.pt',
+        'StefanosKoullapis_Zeibekiko_Slow_C3D_poses.pt',
+        'Stefanos_3os_antrikos_karsilamas_C3D_poses.pt',
+        'Capoeira_Theodoros_v2_C3D_poses.pt',
+        'Form 1_poses.pt',
+        'Extended 3_poses.pt',
+        'freestyle3_poses.pt',
     ]
+    motion_list = [f'{motion_root_folder}/{motion}' for motion in motion_list]
 
     crowd_list = [
         {
-            'id': f'{model_root_folder}/Theo_0522_1624_stage1_20240522_215411/Theo_0522_1624_stage1_20240522_215411-res.pt',
+            'id': f'{model_root_folder}/Theo_0522_1624_512_stage1_20240522_215411/Theo_0522_1624_512_stage1_20240522_215411-res.pt',
             'copy': [ 
-                {'num_person': 2, 'motion': f'{motion_root_folder}/Vasso_Bachata_01_poses.pt'}, 
+                {'num_person': 100, 'motion': f'{motion_root_folder}/Andria_Satisfied_v1_C3D_poses.pt'}, 
             ]
         },
-        {
-            'id': f'{model_root_folder}/Theo_0522_1627_stage1_20240522_220812/Theo_0522_1627_stage1_20240522_220812-res.pt',
-            'copy': [ 
-                {'num_person': 2, 'motion': f'{motion_root_folder}/Vasso_Bachata_01_poses.pt'}, 
-            ]
-        },
-        {
-            'id': f'{model_root_folder}/Theo_0522_1624_128_stage1_20240530_191638/Theo_0522_1624_128_stage1_20240530_191638-res.pt',
-            'copy': [ 
-                {'num_person': 2, 'motion': f'{motion_root_folder}/Vasso_Bachata_01_poses.pt'}, 
-            ]
-        },
-        {
-            'id': f'{model_root_folder}/Theo_0522_1620_stage1_20240522_212911/Theo_0522_1620_stage1_20240522_212911-res.pt',
-            'copy': [ 
-                {'num_person': 2, 'motion': f'{motion_root_folder}/Vasso_Bachata_01_poses.pt'}, 
-            ]
-        },
-        {
-            'id': f'{model_root_folder}/Theo_0522_1616_stage1_20240522_121844/Theo_0522_1616_stage1_20240522_121844-res.pt',
-            'copy': [ 
-                {'num_person': 2, 'motion': f'{motion_root_folder}/Vasso_Bachata_01_poses.pt'}, 
-            ]
-        },
-        {
-            'id': f'{model_root_folder}/Theo_0522_1624_128_stage1_20240530_191638/Theo_0522_1624_128_stage1_20240530_191638-res.pt',
-            'copy': [ 
-                {'num_person': 3, 'motion': f'{motion_root_folder}/Vasso_Bachata_01_poses.pt'}, 
-            ]
-        },
+        # {
+        #     'id': f'{model_root_folder}/Theo_0523_1707_64_stage1_20240611_114939/Theo_0523_1707_64_stage1_20240611_114939-res.pt',
+        #     'copy': [ 
+        #         {'num_person': 100, 'motion': f'{motion_root_folder}/Vasso_Bachata_01_poses.pt'}, 
+        #     ]
+        # },
     ]
     optimized = True
     # optimized = False
     with_motion = True
     # with_motion = False
 
-    row = 4; col = 4;
+    # row = 1; col = 1;
     # row = 10; col = 10        # 100
+    # row = 20; col = 20;       # 400
     # row = 35; col = 30        # 1000
     # row = 45; col = 45        # 2000
+    row = 70; col = 50        # 3500
     # row = 71; col = 71        # 5000
     unit_dist = 1.3             # distance between two people
     shuffle_sequence = True     # wheather to shuffle the sequence
-    gau_avatar_list = util_gau.load_crowd(crowd_list, row, col, unit_dist=unit_dist, shuffle_sequence=shuffle_sequence)
+
+    # Use given crowd_list
+    # gau_avatar_list = util_gau.load_crowd(crowd_list, row, col, unit_dist=unit_dist, shuffle_sequence=shuffle_sequence, cam_position=cam_position)
+
+    # Randomly chose the identity and the motion
+    gau_avatar_list = util_gau.load_crowd_grid(row, col, unit_dist=unit_dist, shuffle_sequence=shuffle_sequence, motion_list=motion_list, identity_list=identity_list, cam_position=cam_position)
     update_activated_renderer_state_avatar(gau_avatar_list, optimized)
     
     # settings
@@ -369,15 +392,15 @@ def main():
             if imgui.button(label="reset ro"):
                 g_camera.roll_sensitivity = 0.03
 
-        if g_show_help_win:
-            imgui.begin("Help", True)
-            imgui.text("Open Gaussian Splatting PLY file \n  by click 'open ply' button")
-            imgui.text("Use left click & move to rotate camera")
-            imgui.text("Use right click & move to translate camera")
-            imgui.text("Press Q/E to roll camera")
-            imgui.text("Use scroll to zoom in/out")
-            imgui.text("Use control panel to change setting")
-            imgui.end()
+        # if g_show_help_win:
+        #     imgui.begin("Help", True)
+        #     imgui.text("Open Gaussian Splatting PLY file \n  by click 'open ply' button")
+        #     imgui.text("Use left click & move to rotate camera")
+        #     imgui.text("Use right click & move to translate camera")
+        #     imgui.text("Press Q/E to roll camera")
+        #     imgui.text("Use scroll to zoom in/out")
+        #     imgui.text("Use control panel to change setting")
+        #     imgui.end()
         
         imgui.render()
         impl.render(imgui.get_draw_data())
@@ -397,7 +420,7 @@ if __name__ == "__main__":
 
 """ Compile different cuda program
 raw version:
-cd /raid/yixu/Projects/GaussianSplatting/gaussian-splatting && pip uninstall -y diff-gaussian-rasterization && pip install submodules/diff-gaussian-rasterization
+pip uninstall -y diff-gaussian-rasterization && pip install /raid/yixu/Projects/GaussianSplatting/gaussian-splatting/submodules/diff-gaussian-rasterization
 
 optimized version:
 pip uninstall -y diff-gaussian-rasterization && pip install /raid/yixu/Projects/GaussianSplatting/diff-gaussian-rasterization-memory-optimized

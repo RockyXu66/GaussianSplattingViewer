@@ -165,8 +165,7 @@ def load_motion(file_path):
     #     xyz_list[i] = rotate_point_cloud(xyz_list[i])
     return xyz_list
 
-def set_transl(crowd_list, row, col, unit_dist=1.3, shuffle_sequence=True):
-    total_num_person = np.sum([copy['num_person'] for identity_dict in crowd_list for copy in identity_dict['copy']])
+def set_transl(total_num_person, row, col, unit_dist=1.3, shuffle_sequence=True):
     assert row * col >= total_num_person, f'total number of persons ({total_num_person}) is bigger than row x col ({row * col})'
     transl_list = []
     for row_idx in range(row):
@@ -211,14 +210,114 @@ def load_identity(identity_dict, transl_list, transl_idx):
     )
     return gau_avatar_data, transl_idx
 
-def load_crowd(crowd_list, row, col, unit_dist=1.3, shuffle_sequence=True):
+def load_crowd(crowd_list, row, col, unit_dist=1.3, shuffle_sequence=True, cam_position=None):
     logger.info(f'Grid size: row x col -> {row} x {col}')
-    transl_list = set_transl(crowd_list, row, col, unit_dist=1.3, shuffle_sequence=shuffle_sequence)
+    total_num_person = np.sum([copy['num_person'] for identity_dict in crowd_list for copy in identity_dict['copy']])
+    transl_list = set_transl(total_num_person, row, col, unit_dist=1.3, shuffle_sequence=shuffle_sequence)
     gau_avatar_list = []
     transl_idx = 0
     for identity in crowd_list:
         gau_avatar, transl_idx = load_identity(identity, transl_list, transl_idx)
         gau_avatar_list.append(gau_avatar)
+    return gau_avatar_list
+
+def divide_into_parts(A, B):
+    parts = np.zeros(B, dtype=int)
+    base_value = A // B
+    parts[:] = base_value
+    remainder = A % B
+    parts[:remainder] += 1
+    return parts
+
+def load_crowd_grid(row, col, unit_dist=1.3, shuffle_sequence=True, cam_position=None, motion_list=None, identity_list=None):
+    logger.info(f'Grid size: row x col -> {row} x {col}')
+    total_num_person = row * col
+    transl_list = set_transl(total_num_person, row, col, unit_dist=1.3, shuffle_sequence=shuffle_sequence)
+
+    LOD_0 = [transl for transl in transl_list if np.linalg.norm(transl-cam_position) <= 5]
+    LOD_1 = [transl for transl in transl_list if 5 < np.linalg.norm(transl-cam_position) <= 10]
+    LOD_2 = [transl for transl in transl_list if 10 < np.linalg.norm(transl-cam_position)]
+
+    gau_avatar_list = []
+
+    transl_idx = 0
+    LOD_0_identity_list = identity_list['res_512']
+    # LOD_0_identity_list = np.random.choice(LOD_0_identity_list, len(LOD_0))
+    assert len(LOD_0_identity_list) <= len(LOD_0)
+    # LOD_0_identity_total_num_person_list = np.arange(1, len(LOD_0)+1, int(len(LOD_0)/len(LOD_0_identity_list)))
+    LOD_0_identity_total_num_person_list = divide_into_parts(len(LOD_0), len(LOD_0_identity_list))
+    for idx in range(len(LOD_0_identity_list)):
+        identity_name = LOD_0_identity_list[idx]
+        identity_total_num_person = LOD_0_identity_total_num_person_list[idx]
+        num_copies = 1
+        LOD_0_motion_list = np.random.choice(motion_list, num_copies)
+        # num_person_list = np.arange(1, identity_total_num_person+1, num_copies)
+        assert identity_total_num_person >= num_copies
+        num_person_list = divide_into_parts(identity_total_num_person, num_copies)
+        copies = []
+        for copy_idx in range(num_copies):
+            num_person = num_person_list[copy_idx]
+            copies.append({
+                'num_person': num_person,
+                'motion': LOD_0_motion_list[copy_idx],
+            })
+        identity = {
+            'id': identity_name,
+            'copy': copies,
+        }
+        gau_avatar, transl_idx = load_identity(identity, LOD_0, transl_idx)
+        gau_avatar_list.append(gau_avatar)
+
+    transl_idx = 0
+    LOD_1_identity_list = identity_list['res_128']
+    assert len(LOD_1_identity_list) <= len(LOD_1)
+    LOD_1_identity_total_num_person_list = divide_into_parts(len(LOD_1), len(LOD_1_identity_list))
+    for idx in range(len(LOD_1_identity_list)):
+        identity_name = LOD_1_identity_list[idx]
+        identity_total_num_person = LOD_1_identity_total_num_person_list[idx]
+        num_copies = 4
+        LOD_1_motion_list = np.random.choice(motion_list, num_copies)
+        assert identity_total_num_person >= num_copies
+        num_person_list = divide_into_parts(identity_total_num_person, num_copies)
+        copies = []
+        for copy_idx in range(num_copies):
+            num_person = num_person_list[copy_idx]
+            copies.append({
+                'num_person': num_person,
+                'motion': LOD_1_motion_list[copy_idx],
+            })
+        identity = {
+            'id': identity_name,
+            'copy': copies,
+        }
+        gau_avatar, transl_idx = load_identity(identity, LOD_1, transl_idx)
+        gau_avatar_list.append(gau_avatar)
+
+    transl_idx = 0
+    LOD_2_identity_list = identity_list['res_64']
+    assert len(LOD_2_identity_list) <= len(LOD_2)
+    LOD_2_identity_total_num_person_list = divide_into_parts(len(LOD_2), len(LOD_2_identity_list))
+    for idx in range(len(LOD_2_identity_list)):
+        identity_name = LOD_2_identity_list[idx]
+        identity_total_num_person = LOD_2_identity_total_num_person_list[idx]
+        num_copies = 4
+        LOD_2_motion_list = np.random.choice(motion_list, num_copies)
+        assert identity_total_num_person >= num_copies
+        num_person_list = divide_into_parts(identity_total_num_person, num_copies)
+        copies = []
+        for copy_idx in range(num_copies):
+            num_person = num_person_list[copy_idx]
+            copies.append({
+                'num_person': num_person,
+                'motion': LOD_2_motion_list[copy_idx],
+            })
+        identity = {
+            'id': identity_name,
+            'copy': copies,
+        }
+        gau_avatar, transl_idx = load_identity(identity, LOD_2, transl_idx)
+        gau_avatar_list.append(gau_avatar)
+    
     return gau_avatar_list
 
 if __name__ == "__main__":

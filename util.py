@@ -5,16 +5,16 @@ import glm
 import ctypes
 
 class Camera:
-    def __init__(self, h, w):
+    def __init__(self, h, w, position, target, up):
         self.znear = 0.01
         self.zfar = 100
         self.h = h
         self.w = w
-        self.fovy = np.pi / 2
-        self.position = np.array([1.0, -3.5, 5.0]).astype(np.float32)
-        self.target = np.array([0.0, -1.0, 0.0]).astype(np.float32)
-        self.up = np.array([0.0, -1.0, 0.0]).astype(np.float32)
-        self.yaw = -np.pi / 2
+        self.fovy = (np.pi / 180) * 55
+        self.position = position
+        self.target = target
+        self.up = up
+        self.yaw = 0 # -np.pi / 2
         self.pitch = 0
         
         self.is_pose_dirty = True
