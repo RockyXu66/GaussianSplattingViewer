@@ -18,6 +18,8 @@ Screenshot of CrowdSplat running at 31 FPS on an RTX4090 with 3,500 animated cha
 Test under Ubuntu 22.04 with cuda 11.8
 
 ```
+git clone https://github.com/RockyXu66/GaussianSplattingViewer.git
+
 conda create -n gs-crowd-viewer python=3.9 -y
 
 conda activate gs-crowd-viewer
@@ -26,7 +28,7 @@ pip install torch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 --index-url https
 
 mkdir submodules
 
-git clone git@github.com:RockyXu66/diff-gaussian-rasterization-memory-optimized.git --recursive submodules/diff-gaussian-rasterization-memory-optimized
+git clone https://github.com/RockyXu66/diff-gaussian-rasterization-memory-optimized.git --recursive submodules/diff-gaussian-rasterization-memory-optimized
 
 pip install -r requirements.txt
 
