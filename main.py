@@ -153,49 +153,27 @@ def main():
     # gaussian data
     gaussians = util_gau.naive_gaussian()
 
-    model_root_folder = '/raid/yixu/Data/Data/GaussianAvatar/output'
-    motion_root_folder = '/raid/yixu/Projects/GaussianSplatting/GaussianAvatar/gs-crowd-scripts/data'
+    model_root_folder = 'gs-crowd-avatars/models'
+    motion_root_folder = 'gs-crowd-avatars/motions'
 
     identity_list = {
         'res_512': [
-            f'{model_root_folder}/Theo_0522_1616_512_stage1_20240522_121844/Theo_0522_1616_512_stage1_20240522_121844-res.pt',
-            f'{model_root_folder}/Theo_0522_1620_512_stage1_20240522_212911/Theo_0522_1620_512_stage1_20240522_212911-res.pt',
-            f'{model_root_folder}/Theo_0522_1624_512_stage1_20240522_215411/Theo_0522_1624_512_stage1_20240522_215411-res.pt',
-            f'{model_root_folder}/Theo_0522_1627_512_stage1_20240522_220812/Theo_0522_1627_512_stage1_20240522_220812-res.pt',
-            f'{model_root_folder}/Theo_0523_1704_512_stage1_20240527_223108/Theo_0523_1704_512_stage1_20240527_223108-res.pt',
-            f'{model_root_folder}/Theo_0523_1712_512_stage1_20240611_115316/Theo_0523_1712_512_stage1_20240611_115316-res.pt',
-            f'{model_root_folder}/Theo_0523_1719_512_stage1_20240610_001401/Theo_0523_1719_512_stage1_20240610_001401-res.pt',
+            f'{model_root_folder}/Nivesh-2406141613_512_stage1-res.pt',
+            f'{model_root_folder}/Theo_IMG_3783_512_stage1-res.pt',
         ],
         'res_128': [
-            f'{model_root_folder}/Theo_0522_1624_128_stage1_20240530_191638/Theo_0522_1624_128_stage1_20240530_191638-res.pt',
-            f'{model_root_folder}/Theo_0523_1704_128_stage1_20240611_114727/Theo_0523_1704_128_stage1_20240611_114727-res.pt',
-            f'{model_root_folder}/Theo_0523_1707_128_stage1_20240610_000011/Theo_0523_1707_128_stage1_20240610_000011-res.pt',
-            f'{model_root_folder}/Theo_0523_1712_128_stage1_20240610_000332/Theo_0523_1712_128_stage1_20240610_000332-res.pt',
-            f'{model_root_folder}/Theo_0523_1719_128_stage1_20240610_073422/Theo_0523_1719_128_stage1_20240610_073422-res.pt',
+            f'{model_root_folder}/Nivesh-2406141613_128_stage1-res.pt',
+            f'{model_root_folder}/Theo_IMG_3783_128_stage1-res.pt',
         ],
         'res_64': [
-            f'{model_root_folder}/Theo_0523_1704_64_stage1_20240611_145151/Theo_0523_1704_64_stage1_20240611_145151-res.pt',
-            f'{model_root_folder}/Theo_0523_1707_64_stage1_20240611_114939/Theo_0523_1707_64_stage1_20240611_114939-res.pt',
-            f'{model_root_folder}/Theo_0523_1712_64_stage1_20240611_192040/Theo_0523_1712_64_stage1_20240611_192040-res.pt',
-            f'{model_root_folder}/Theo_0523_1719_64_stage1_20240611_115125/Theo_0523_1719_64_stage1_20240611_115125-res.pt',
+            f'{model_root_folder}/Nivesh-2406141613_64_stage1-res.pt',
+            f'{model_root_folder}/Theo_IMG_3783_64_stage1-res.pt',
         ],
     }
     motion_list = [
-        'Vasso_Bachata_01_poses.pt',    # inplace
-        '05_14_poses.pt',
-        'op8_poses.pt',
-        'Andria_Satisfied_v1_C3D_poses.pt',
-
-        'ANDREAS_Hasaposerviko_poses.pt', # inplace dance
-        'ANDREAS_Tatsia_poses.pt',
-        'Nikos_Zeibekiko_C3D_poses.pt',
-        'StefanosKoullapis_Reggaeton_C3D_poses.pt',
-        'StefanosKoullapis_Zeibekiko_Slow_C3D_poses.pt',
-        'Stefanos_3os_antrikos_karsilamas_C3D_poses.pt',
-        'Capoeira_Theodoros_v2_C3D_poses.pt',
-        'Form 1_poses.pt',
+        
         'Extended 3_poses.pt',
-        'freestyle3_poses.pt',
+        'Walk B22 - Side step left_poses.pt',
     ]
     motion_list = [f'{motion_root_folder}/{motion}' for motion in motion_list]
 
@@ -219,11 +197,12 @@ def main():
     # with_motion = False
 
     # row = 1; col = 1;
+    # row = 3; col = 3        # 100
     # row = 10; col = 10        # 100
     # row = 20; col = 20;       # 400
     # row = 35; col = 30        # 1000
-    # row = 45; col = 45        # 2000
-    row = 70; col = 50        # 3500
+    row = 45; col = 45        # 2000
+    # row = 70; col = 50        # 3500
     # row = 71; col = 71        # 5000
     unit_dist = 1.3             # distance between two people
     shuffle_sequence = True     # wheather to shuffle the sequence
@@ -277,24 +256,25 @@ def main():
 
                 imgui.text(f"fps = {imgui.get_io().framerate:.1f}")
 
-                changed, g_renderer.reduce_updates = imgui.checkbox(
-                        "reduce updates", g_renderer.reduce_updates,
-                    )
+                # changed, g_renderer.reduce_updates = imgui.checkbox(
+                #         "reduce updates", g_renderer.reduce_updates,
+                #     )
 
                 total_num_gaus = np.sum([gau_avatar.total_num_person * gau_avatar.num_points_per_subject for gau_avatar in gau_avatar_list])
-                imgui.text(f"# of Gaus = {total_num_gaus}")
-                if imgui.button(label='open ply'):
-                    file_path = filedialog.askopenfilename(title="open ply",
-                        initialdir="C:\\Users\\MSI_NB\\Downloads\\viewers",
-                        filetypes=[('ply file', '.ply')]
-                        )
-                    if file_path:
-                        try:
-                            gaussians = util_gau.load_ply(file_path)
-                            g_renderer.update_gaussian_data(gaussians)
-                            g_renderer.sort_and_update(g_camera)
-                        except RuntimeError as e:
-                            pass
+                # imgui.text(f"# of Gaus = {total_num_gaus}")
+                imgui.text(f"# of avatars = {col * row}")
+                # if imgui.button(label='open ply'):
+                #     file_path = filedialog.askopenfilename(title="open ply",
+                #         initialdir="C:\\Users\\MSI_NB\\Downloads\\viewers",
+                #         filetypes=[('ply file', '.ply')]
+                #         )
+                #     if file_path:
+                #         try:
+                #             gaussians = util_gau.load_ply(file_path)
+                #             g_renderer.update_gaussian_data(gaussians)
+                #             g_renderer.sort_and_update(g_camera)
+                #         except RuntimeError as e:
+                #             pass
                 
                 # camera fov
                 changed, g_camera.fovy = imgui.slider_float(
@@ -303,30 +283,30 @@ def main():
                 g_camera.is_intrin_dirty = changed
                 update_camera_intrin_lazy()
                 
-                # scale modifier
-                changed, g_scale_modifier = imgui.slider_float(
-                    "", g_scale_modifier, 0.1, 10, "scale modifier = %.3f"
-                )
-                imgui.same_line()
-                if imgui.button(label="reset"):
-                    g_scale_modifier = 1.
-                    changed = True
+                # # scale modifier
+                # changed, g_scale_modifier = imgui.slider_float(
+                #     "", g_scale_modifier, 0.1, 10, "scale modifier = %.3f"
+                # )
+                # imgui.same_line()
+                # if imgui.button(label="reset"):
+                #     g_scale_modifier = 1.
+                #     changed = True
                     
-                if changed:
-                    g_renderer.set_scale_modifier(g_scale_modifier)
+                # if changed:
+                #     g_renderer.set_scale_modifier(g_scale_modifier)
                 
                 # # render mode
                 # changed, g_render_mode = imgui.combo("shading", g_render_mode, g_render_mode_tables)
                 # if changed:
                 #     g_renderer.set_render_mod(g_render_mode - 4)
                 
-                # sort button
-                if imgui.button(label='sort Gaussians'):
-                    g_renderer.sort_and_update(g_camera)
-                imgui.same_line()
-                changed, g_auto_sort = imgui.checkbox(
-                        "auto sort", g_auto_sort,
-                    )
+                # # sort button
+                # if imgui.button(label='sort Gaussians'):
+                #     g_renderer.sort_and_update(g_camera)
+                # imgui.same_line()
+                # changed, g_auto_sort = imgui.checkbox(
+                #         "auto sort", g_auto_sort,
+                #     )
                 # if g_auto_sort:
                 #     g_renderer.sort_and_update(g_camera)
                 
