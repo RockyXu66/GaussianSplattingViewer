@@ -251,7 +251,8 @@ class CUDARenderer(GaussianRenderBase):
             "image_width": int(w),
             "tanfovx": 1,
             "tanfovy": 1,
-            "bg": torch.Tensor([0., 0., 0]).float().cuda(),
+            # "bg": torch.Tensor([0., 0., 0]).float().cuda(),
+            "bg": torch.Tensor([1., 1., 1.]).float().cuda(),
             "scale_modifier": 1.,
             "viewmatrix": None,
             "projmatrix": None,
@@ -448,6 +449,7 @@ class CUDARenderer(GaussianRenderBase):
                 cano2live_jnt_mats = copy['motion'][frame_idx%motion_len : frame_idx%motion_len+1].clone().repeat(num_person, 1, 1, 1)
                 pt_mats = torch.einsum('bnj,bjxy->bnxy', query_lbs, cano2live_jnt_mats)
                 xyz = torch.einsum('bnxy,bny->bnx', pt_mats[..., :3, :3], cano_deform_point) + pt_mats[..., :3, 3]
+                xyz[:, :2, :] = 0.0
                 xyz[:, :, 0:2] = -xyz[:, :, 0:2]
                 xyz[:, :, :] += copy['transl_list'].unsqueeze(1).repeat(1, xyz.shape[1], 1)
                 xyz = xyz.view(-1, 3)
