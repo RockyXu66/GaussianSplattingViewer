@@ -170,7 +170,8 @@ def set_transl(total_num_person, row, col, unit_dist=1.3, shuffle_sequence=True)
     transl_list = []
     for row_idx in range(row):
         for col_idx in range(col):
-            transl_list.append(np.array([(col_idx - col / 2) * unit_dist, 0, -row_idx * unit_dist]))
+            noise = np.random.normal(0, 0.3, size=2)
+            transl_list.append(np.array([(col_idx - col / 2) * unit_dist + noise[0], 0, -row_idx * unit_dist + noise[1]]))
     transl_list = np.array(transl_list)
     if shuffle_sequence:
         np.random.shuffle(transl_list)
@@ -232,7 +233,7 @@ def divide_into_parts(A, B):
 def load_crowd_grid(row, col, unit_dist=1.3, shuffle_sequence=True, cam_position=None, motion_list=None, identity_list=None):
     logger.info(f'Grid size: row x col -> {row} x {col}')
     total_num_person = row * col
-    transl_list = set_transl(total_num_person, row, col, unit_dist=1.3, shuffle_sequence=shuffle_sequence)
+    transl_list = set_transl(total_num_person, row, col, unit_dist=unit_dist, shuffle_sequence=shuffle_sequence)
 
     LOD_0 = [transl for transl in transl_list if np.linalg.norm(transl-cam_position) <= 5]
     LOD_1 = [transl for transl in transl_list if 5 < np.linalg.norm(transl-cam_position) <= 10]

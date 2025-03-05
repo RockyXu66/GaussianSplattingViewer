@@ -135,6 +135,13 @@ def main():
         imgui.get_io().font_global_scale = 1.5
     window = impl_glfw_init()
     impl = GlfwRenderer(window)
+
+    # Load a custom font
+    io = imgui.get_io()
+    font_path = "Roboto/Roboto-VariableFont_wdth,wght.ttf"  # Replace with the actual font file path
+    custom_font = io.fonts.add_font_from_file_ttf(font_path, 35)  # Adjust the size as needed
+    impl.refresh_font_texture()  # Apply the font
+
     root = tk.Tk()  # used for file dialog
     root.withdraw()
     
@@ -231,6 +238,8 @@ def main():
             g_renderer.update_pos(optimized)
         g_renderer.draw_w_precolor(optimized)
 
+        imgui.push_font(custom_font)
+
         # imgui ui
         if imgui.begin_main_menu_bar():
             if imgui.begin_menu("Window", True):
@@ -262,7 +271,7 @@ def main():
 
                 total_num_gaus = np.sum([gau_avatar.total_num_person * gau_avatar.num_points_per_subject for gau_avatar in gau_avatar_list])
                 # imgui.text(f"# of Gaus = {total_num_gaus}")
-                imgui.text(f"# of avatars = {col * row}")
+                imgui.text(f"# characters = {col * row}")
                 # if imgui.button(label='open ply'):
                 #     file_path = filedialog.askopenfilename(title="open ply",
                 #         initialdir="C:\\Users\\MSI_NB\\Downloads\\viewers",
@@ -381,7 +390,9 @@ def main():
         #     imgui.text("Use scroll to zoom in/out")
         #     imgui.text("Use control panel to change setting")
         #     imgui.end()
-        
+
+        imgui.pop_font()
+
         imgui.render()
         impl.render(imgui.get_draw_data())
         glfw.swap_buffers(window)
