@@ -1,4 +1,6 @@
-# 3DGS Crowd Viewer [[Project Page]](https://bigmmgz.github.io/CrowdSplat/)
+# CrowdSplat [[Project Page]](https://bigmmgz.github.io/CrowdSplat/)
+
+We present CrowdSplat, a novel approach that leverages 3D Gaussian Splatting for real-time, high-quality crowd rendering.
 
 This repository is a modified version of [GaussianSplattingViewer](https://github.com/limacv/GaussianSplattingViewer). For rasterization, we use [diff-gaussian-rasterization-memory-optimized
 ](https://github.com/RockyXu66/diff-gaussian-rasterization-memory-optimized), a memory-optimized version of [diff-gaussian-rasterization](https://github.com/graphdeco-inria/diff-gaussian-rasterization) designed for our crowd rendering. The avatar templates are trained using [GaussianAvatar](https://github.com/aipixel/GaussianAvatar).
