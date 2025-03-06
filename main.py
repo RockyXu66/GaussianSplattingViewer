@@ -139,7 +139,7 @@ def main():
     # Load a custom font
     io = imgui.get_io()
     font_path = "Roboto/Roboto-VariableFont_wdth,wght.ttf"  # Replace with the actual font file path
-    custom_font = io.fonts.add_font_from_file_ttf(font_path, 35)  # Adjust the size as needed
+    custom_font = io.fonts.add_font_from_file_ttf(font_path, 20)  # Adjust the size as needed
     impl.refresh_font_texture()  # Apply the font
 
     root = tk.Tk()  # used for file dialog
